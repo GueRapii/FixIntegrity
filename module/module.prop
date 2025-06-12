@@ -1,6 +1,6 @@
 id=playintegrityfix
 name=Play Integrity Fix [INJECT]
-version=v3-inject-vending
-versionCode=3
+version=v3.3-inject-vending
+versionCode=33
 author=chiteroman
 description=Universal modular fix for Play Integrity on devices running Android 8-16
