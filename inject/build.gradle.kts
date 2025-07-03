@@ -4,8 +4,8 @@ plugins {
 
 android {
     namespace = "es.chiteroman.inject"
-    compileSdk = 35
-    ndkVersion = "28.1.13356709"
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
     buildToolsVersion = "36.0.0"
 
     buildFeatures {
@@ -24,6 +24,7 @@ android {
     defaultConfig {
         minSdk = 26
 
+        @file:Suppress("UnstableApiUsage")
         externalNativeBuild {
             cmake {
                 abiFilters(
@@ -34,7 +35,7 @@ android {
                 arguments(
                     "-DCMAKE_BUILD_TYPE=Release",
                     "-DANDROID_STL=none",
-                    "-DCMAKE_BUILD_PARALLEL_LEVEL=${Runtime.getRuntime().availableProcessors()}",
+                    "-DCMAKE_JOB_POOLS=compile=${Runtime.getRuntime().availableProcessors()}",
                     "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                 )
