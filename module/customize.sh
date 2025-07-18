@@ -74,6 +74,9 @@ if [ -f "/data/adb/modules/playintegrityfix/pif.prop" ]; then
     done
 fi
 
+# Restore previous settings
+[ -f "/data/adb/modules/playintegrityfix/uninstall.sh" ] && cp -af /data/adb/modules/playintegrityfix/uninstall.sh "$MODPATH/uninstall.sh"
+
 # Check custom fingerprint
 if [ -f "/data/adb/pif.prop" ]; then
     ui_print "- Backup custom pif.prop"

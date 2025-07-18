@@ -1,6 +1,22 @@
 RESETPROP="resetprop -n"
 [ -f /data/adb/magisk/util_functions.sh ] && [ "$(grep MAGISK_VER_CODE /data/adb/magisk/util_functions.sh | cut -d= -f2)" -lt 27003 ] && RESETPROP=resetprop_hexpatch
 
+# persistprop <prop name> <new value>
+persistprop() {
+    local NAME="$1"
+    local NEWVALUE="$2"
+    local CURVALUE="$(resetprop "$NAME")"
+
+    if ! grep -q "$NAME" $MODPATH/uninstall.sh 2>/dev/null; then
+        if [ "$CURVALUE" ]; then
+            [ "$NEWVALUE" = "$CURVALUE" ] || echo "resetprop -n -p \"$NAME\" \"$CURVALUE\"" >> $MODPATH/uninstall.sh
+        else
+            echo "resetprop -p --delete \"$NAME\"" >> $MODPATH/uninstall.sh
+        fi
+    fi
+    resetprop -n -p "$NAME" "$NEWVALUE"
+}
+
 # resetprop_hexpatch [-f|--force] <prop name> <new value>
 resetprop_hexpatch() {
     case "$1" in
