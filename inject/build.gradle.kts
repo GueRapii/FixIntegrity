@@ -1,3 +1,5 @@
+@file:Suppress("UnstableApiUsage")
+
 plugins {
     alias(libs.plugins.android.library)
 }
@@ -34,7 +36,7 @@ android {
                 arguments(
                     "-DCMAKE_BUILD_TYPE=Release",
                     "-DANDROID_STL=none",
-                    "-DCMAKE_BUILD_PARALLEL_LEVEL=${Runtime.getRuntime().availableProcessors()}",
+                    "-DCMAKE_JOB_POOLS=compile=${Runtime.getRuntime().availableProcessors()}",
                     "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                 )

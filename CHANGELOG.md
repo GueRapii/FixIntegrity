@@ -2,6 +2,16 @@
 
 Play Integrity Fix [INJECT] - fork by KOWX712
 
+## v4.3
+
+- Drop preview option
+- Hide debug option in WebUI
+- New script only mode, zygisk is still loaded but no injection, no need reboot to take effect.
+- New spoofVendingBuild option, enable to spoof fingerprint field to Play Store.
+- WebUI: view option - view current pif.prop
+- WebUI: select device option - choose model that will be fetched
+- WebUI: update color scheme, improved UI
+
 ## v4.2
 
 - Fixed crash.
