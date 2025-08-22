@@ -1,6 +1,5 @@
 import { exec, spawn, toast } from "./assets/kernelsu.js";
 
-let forcePreview = true;
 let scriptOnly = false;
 let shellRunning = false;
 let initialPinchDistance = null;
@@ -24,7 +23,6 @@ const spoofConfig = [
 // Apply button event listeners
 function applyButtonEventListeners() {
     const fetchButton = document.getElementById('fetch');
-    const previewFpToggle = document.getElementById('preview-fp-toggle-container');
     const scriptOnlyToggle = document.getElementById('script-only-toggle-container');
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
@@ -32,11 +30,6 @@ function applyButtonEventListeners() {
     const githubBtn = document.getElementById('github-btn');
 
     fetchButton.addEventListener('click', runAction);
-    previewFpToggle.addEventListener('click', async () => {
-        forcePreview = !forcePreview;
-        loadPreviewFingerprintConfig();
-        appendToOutput(`[+] Switched fingerprint to ${forcePreview ? 'preview' : 'beta'}`);
-    });
 
     scriptOnlyToggle.addEventListener('click', async () => {
         await exec(`${scriptOnly ? 'rm -rf /data/adb/pif_script_only' : 'touch /data/adb/pif_script_only'} || true
@@ -226,12 +219,6 @@ async function updateSpoofConfig(toggle, type, pifFile) {
     return isSuccess;
 }
 
-// Function to load preview fingerprint config
-function loadPreviewFingerprintConfig() {
-    const previewFpToggle = document.getElementById('toggle-preview-fp');
-    previewFpToggle.checked = forcePreview;
-}
-
 // Function to append element in output terminal
 function appendToOutput(content) {
     const output = document.querySelector('.output-terminal-content');
@@ -252,7 +239,6 @@ function runAction() {
     if (shellRunning) return;
     muteToggle();
     const args = ["/data/adb/modules/playintegrityfix/autopif.sh"];
-    if (forcePreview) args.push('-p');
     const scriptOutput = spawn("sh", args);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
     scriptOutput.stderr.on('data', (data) => appendToOutput(data));
@@ -453,7 +439,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     spoofConfig.forEach(config => {
         setupSpoofConfigButton(config.container, config.toggle, config.type);
     });
-    loadPreviewFingerprintConfig();
     loadScriptOnlyConfig();
     applyButtonEventListeners();
     applyRippleEffect();
