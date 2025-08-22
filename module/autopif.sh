@@ -3,13 +3,8 @@
 PATH=/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/data/data/com.termux/files/usr/bin:$PATH
 MODDIR=/data/adb/modules/playintegrityfix
 version=$(grep "^version=" $MODDIR/module.prop | sed 's/version=//g')
-FORCE_PREVIEW=0
 
 . $MODDIR/common_func.sh
-
-case $1 in
-	-p|--preview|preview) FORCE_PREVIEW=1;;
-esac
 
 # lets try to use tmpfs for processing
 TEMPDIR="$MODDIR/temp" #fallback
@@ -41,17 +36,8 @@ download https://developer.android.com/about/versions PIXEL_VERSIONS_HTML
 BETA_URL=$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n1)
 download "$BETA_URL" PIXEL_LATEST_HTML
 
-# Handle Developer Preview vs Beta
-if grep -qE 'Developer Preview|tooltip>.*preview program' PIXEL_LATEST_HTML && [ "$FORCE_PREVIEW" = 0 ]; then
-	# Use the second latest version for beta
-	BETA_URL=$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n2 | tail -n1)
-	download "$BETA_URL" PIXEL_BETA_HTML
-else
-	mv -f PIXEL_LATEST_HTML PIXEL_BETA_HTML
-fi
-
 # Get OTA information
-OTA_URL="https://developer.android.com$(grep -o 'href=".*download-ota.*"' PIXEL_BETA_HTML | cut -d\" -f2 | head -n1)"
+OTA_URL="https://developer.android.com$(grep -o 'href=".*download-ota.*"' PIXEL_LATEST_HTML | grep 'qpr' | cut -d\" -f2 | head -n1)"
 download "$OTA_URL" PIXEL_OTA_HTML
 
 # Extract device information

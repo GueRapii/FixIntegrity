@@ -1,6 +1,5 @@
 import { exec, spawn } from "./assets/kernelsu.js";
 
-let forcePreview = true;
 let shellRunning = false;
 let initialPinchDistance = null;
 let currentFontSize = 14;
@@ -10,16 +9,10 @@ const MAX_FONT_SIZE = 24;
 // Apply button event listeners
 function applyButtonEventListeners() {
     const fetchButton = document.getElementById('fetch');
-    const previewFpToggle = document.getElementById('preview-fp-toggle-container');
     const clearButton = document.querySelector('.clear-terminal');
     const terminal = document.querySelector('.output-terminal-content');
 
     fetchButton.addEventListener('click', runAction);
-    previewFpToggle.addEventListener('click', async () => {
-        forcePreview = !forcePreview;
-        loadPreviewFingerprintConfig();
-        appendToOutput(`[+] Switched fingerprint to ${forcePreview ? 'preview' : 'beta'}`);
-    });
 
     clearButton.addEventListener('click', () => {
         terminal.innerHTML = '';
@@ -66,12 +59,6 @@ async function loadVersionFromModuleProp() {
     }
 }
 
-// Function to load preview fingerprint config
-function loadPreviewFingerprintConfig() {
-    const previewFpToggle = document.getElementById('toggle-preview-fp');
-    previewFpToggle.checked = forcePreview;
-}
-
 // Function to append element in output terminal
 function appendToOutput(content) {
     const output = document.querySelector('.output-terminal-content');
@@ -92,7 +79,6 @@ function runAction() {
     if (shellRunning) return;
     muteToggle();
     const args = ["/data/adb/modules/playintegrityfix/autopif.sh"];
-    if (forcePreview) args.push('-p');
     const scriptOutput = spawn("sh", args);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
     scriptOutput.stderr.on('data', (data) => appendToOutput(data));
@@ -227,7 +213,6 @@ function updateFontSize(newSize) {
 document.addEventListener('DOMContentLoaded', async () => {
     checkMMRL();
     loadVersionFromModuleProp();
-    loadPreviewFingerprintConfig();
     applyButtonEventListeners();
     applyRippleEffect();
     updateAutopif();
