@@ -93,7 +93,7 @@ async function loadVersionFromModuleProp() {
     if (errno === 0) {
         versionElement.textContent = stdout.trim();
     } else {
-        appendToOutput("[!] Failed to read version from module.prop");
+        appendToOutput(`[!] Failed to read version from module.prop: ${stderr}`, true);
         console.error("Failed to read version from module.prop:", stderr);
     }
     checkDescription();
@@ -121,7 +121,7 @@ async function loadSpoofConfig() {
             toggle.checked = pifMap[config];
         });
     } catch (error) {
-        appendToOutput(`[!] Failed to load spoof config.`);
+        appendToOutput(`[!] Failed to load spoof config: ${error}`, true);
         appendToOutput('[!] Warning: Do not use third party tools to fetch pif.prop');
         resetPifProp();
         console.error(`Failed to load spoof config:`, error);
@@ -139,14 +139,14 @@ function resetPifProp() {
         })
         .then(async text => {
             const pifProp = text.trim();
-            const { errno } = await exec(`
+            const { errno, stderr } = await exec(`
                 echo '${pifProp}' > /data/adb/modules/playintegrityfix/pif.prop
                 rm -f /data/adb/pif.prop || true
             `);
             if (errno === 0) {
                 appendToOutput(`[+] Successfully reset pif.prop`);
             } else {
-                appendToOutput(`[!] Failed to reset pif.prop`);
+                appendToOutput(`[!] Failed to reset pif.prop: ${stderr}`, true);
             }
         })
         .catch(error => {
@@ -225,7 +225,7 @@ async function updateSpoofConfig(toggle, type, pifFile) {
 }
 
 // Function to append element in output terminal
-function appendToOutput(content) {
+function appendToOutput(content, error = false) {
     const output = document.querySelector('.output-terminal-content');
     if (content.trim() === "") {
         const lineBreak = document.createElement('br');
@@ -234,6 +234,7 @@ function appendToOutput(content) {
         const line = document.createElement('p');
         line.className = 'output-content';
         line.innerHTML = content.replace(/ /g, '&nbsp;');
+        if (error) line.style.color = 'red';
         output.appendChild(line);
     }
     output.scrollTop = output.scrollHeight;
@@ -246,13 +247,13 @@ function runAction() {
     const args = ["/data/adb/modules/playintegrityfix/autopif.sh"];
     const scriptOutput = spawn("sh", args);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
-    scriptOutput.stderr.on('data', (data) => appendToOutput(data));
+    scriptOutput.stderr.on('data', (data) => appendToOutput(`[!] Error executing autopif.sh: ${data}`, true));
     scriptOutput.on('exit', () => {
         appendToOutput("");
         unmuteToggle();
     });
     scriptOutput.on('error', () => {
-        appendToOutput("[!] Error: Fail to execute autopif.sh");
+        appendToOutput("[!] Error: Fail to execute autopif.sh", true);
         appendToOutput("");
         unmuteToggle();
     });
@@ -262,12 +263,12 @@ function updateAutopif() {
     muteToggle();
     const scriptOutput = spawn("sh", ["/data/adb/modules/playintegrityfix/autopif_ota.sh"]);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
-    scriptOutput.stderr.on('data', (data) => appendToOutput(data));
+    scriptOutput.stderr.on('data', (data) => appendToOutput(`[!] Error executing autopif_ota.sh: ${data}`, true));
     scriptOutput.on('exit', () => {
         unmuteToggle();
     });
     scriptOutput.on('error', () => {
-        appendToOutput("[!] Error: Fail to execute autopif_ota.sh");
+        appendToOutput("[!] Error: Fail to execute autopif_ota.sh", true);
         appendToOutput("");
         unmuteToggle();
     });
