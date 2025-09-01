@@ -19,7 +19,7 @@ static bool spoofBuild = true, spoofProps = true, spoofProvider = false, spoofSi
 
 static bool DEBUG = false;
 static std::string DEVICE_INITIAL_SDK_INT = "21", SECURITY_PATCH, BUILD_ID;
-static bool spoofVendingSdk = false;
+static bool spoofVendingSdk = false, spoofVendingBuild = false;
 
 typedef void (*T_Callback)(void *, const char *, const char *, uint32_t);
 
@@ -157,9 +157,10 @@ static void parseProps() {
         spoofVendingSdk = (v == "1" || v == "true");
         propMap.erase("spoofVendingSdk");
     }
-    if (isVending) {
-        propMap.clear();
-        return;
+    if (propMap.count("spoofVendingBuild")) {
+        std::string v = propMap["spoofVendingBuild"];
+        spoofVendingBuild = (v == "1" || v == "true");
+        propMap.erase("spoofVendingBuild");
     }
     if (propMap.count("DEVICE_INITIAL_SDK_INT")) {
         DEVICE_INITIAL_SDK_INT = propMap["DEVICE_INITIAL_SDK_INT"];
@@ -378,8 +379,12 @@ init(JavaVM *vm, const std::string &gmsDir, bool isGmsUnstable, bool isVending) 
         if (spoofProps) {
             return !doHook();
         }
-    } else if (isVending && spoofVendingSdk) {
-        doSpoofVending();
+    } else if (isVending) {
+        if (spoofVendingBuild) {
+            UpdateBuildFields();
+        } else if (spoofVendingSdk) {
+            doSpoofVending();
+        }
     }
 
     return true;

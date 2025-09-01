@@ -7,23 +7,19 @@ let currentFontSize = 14;
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
-const spoofBuildToggle = document.getElementById('toggle-spoofBuild');
-const spoofProviderToggle = document.getElementById('toggle-spoofProvider');
-const spoofPropsToggle = document.getElementById('toggle-spoofProps');
-const spoofSignatureToggle = document.getElementById('toggle-spoofSignature');
-const spoofVendingSdkToggle = document.getElementById('toggle-sdk-vending');
 const spoofConfig = [
-    { container: "spoofBuild-toggle-container", toggle: spoofBuildToggle, type: 'spoofBuild' },
-    { container: "spoofProvider-toggle-container", toggle: spoofProviderToggle, type: 'spoofProvider' },
-    { container: "spoofProps-toggle-container", toggle: spoofPropsToggle, type: 'spoofProps' },
-    { container: "spoofSignature-toggle-container", toggle: spoofSignatureToggle, type: 'spoofSignature' },
-    { container: "sdk-vending-toggle-container", toggle: spoofVendingSdkToggle, type: 'spoofVendingSdk' }
+    'spoofBuild',
+    'spoofProvider',
+    'spoofProps',
+    'spoofSignature',
+    'spoofVendingBuild',
+    'spoofVendingSdk'
 ];
 
 // Apply button event listeners
 function applyButtonEventListeners() {
     const fetchButton = document.getElementById('fetch');
-    const scriptOnlyToggle = document.getElementById('script-only-toggle-container');
+    const scriptOnlyToggle = document.getElementById('script-only-container');
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
     const terminal = document.querySelector('.output-terminal-content');
@@ -119,12 +115,12 @@ async function loadSpoofConfig() {
         const { errno, stdout, stderr } = await exec(`cat /data/adb/modules/playintegrityfix/pif.prop`);
         if (errno !== 0) throw new Error(stderr);
 
-        const config = parsePropToMap(stdout);
-        spoofBuildToggle.checked = config.spoofBuild;
-        spoofProviderToggle.checked = config.spoofProvider;
-        spoofPropsToggle.checked = config.spoofProps;
-        spoofSignatureToggle.checked = config.spoofSignature;
-        spoofVendingSdkToggle.checked = config.spoofVendingSdk;
+        const pifMap = parsePropToMap(stdout);
+
+        spoofConfig.forEach(config => {
+            const toggle = document.getElementById(`${config}-toggle`);
+            toggle.checked = pifMap[config];
+        });
     } catch (error) {
         appendToOutput(`[!] Failed to load spoof config.`);
         appendToOutput('[!] Warning: Do not use third party tools to fetch pif.prop');
@@ -160,30 +156,35 @@ function resetPifProp() {
 }
 
 // Function to setup spoof config button
-function setupSpoofConfigButton(container, toggle, type) {
-    document.getElementById(container).addEventListener('click', async () => {
-        if (shellRunning) return;
-        muteToggle();
-        const { errno, stdout, stderr } = await exec(`
-            [ ! -f /data/adb/modules/playintegrityfix/pif.prop ] || echo "/data/adb/modules/playintegrityfix/pif.prop"
-            [ ! -f /data/adb/pif.prop ] || echo "/data/adb/pif.prop"
-        `);
-        if (errno === 0) {
-            const isSuccess = await updateSpoofConfig(toggle, type, stdout);
-            if (isSuccess) {
-                loadSpoofConfig();
-                appendToOutput(`[+] ${toggle.checked ? "Disabled" : "Enabled"} ${type}`);
-            } else {
-                appendToOutput(`[!] Failed to ${toggle.checked ? "disable" : "enable"} ${type}`);
-            }
-            await exec(`
-                killall com.google.android.gms.unstable || true
-                killall com.android.vending || true
+function setupSpoofConfigButton() {
+    spoofConfig.forEach(config => {
+        const container = config + "-container";
+        const toggle = document.getElementById(`${config}-toggle`);
+
+        document.getElementById(container).addEventListener('click', async () => {
+            if (shellRunning) return;
+            muteToggle();
+            const { errno, stdout, stderr } = await exec(`
+                [ ! -f /data/adb/modules/playintegrityfix/pif.prop ] || echo "/data/adb/modules/playintegrityfix/pif.prop"
+                [ ! -f /data/adb/pif.prop ] || echo "/data/adb/pif.prop"
             `);
-        } else {
-            console.error(`Failed to find pif.prop:`, stderr);
-        }
-        unmuteToggle();
+            if (errno === 0) {
+                const isSuccess = await updateSpoofConfig(toggle, config, stdout);
+                if (isSuccess) {
+                    loadSpoofConfig();
+                    appendToOutput(`[+] ${toggle.checked ? "Disabled" : "Enabled"} ${config}`);
+                } else {
+                    appendToOutput(`[!] Failed to ${toggle.checked ? "disable" : "enable"} ${config}`);
+                }
+                await exec(`
+                    killall com.google.android.gms.unstable || true
+                    killall com.android.vending || true
+                `);
+            } else {
+                console.error(`Failed to find pif.prop:`, stderr);
+            }
+            unmuteToggle();
+        });
     });
 }
 
@@ -211,6 +212,11 @@ async function updateSpoofConfig(toggle, type, pifFile) {
             // write
             const { errno } = await exec(`echo '${prop}' > ${pifFile}`);
             if (errno !== 0) isSuccess = false;
+
+            // reminder
+            if (config.spoofVendingBuild && config.spoofVendingSdk) {
+                appendToOutput('[!] spoofVendingSdk will not take effect when spoofVendingBuild is enabled.');
+            }
         } catch (error) {
             console.error(`Failed to update ${pifFile}:`, error);
             isSuccess = false;
@@ -436,9 +442,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     checkMMRL();
     loadVersionFromModuleProp();
     await loadSpoofConfig();
-    spoofConfig.forEach(config => {
-        setupSpoofConfigButton(config.container, config.toggle, config.type);
-    });
+    setupSpoofConfigButton();
     loadScriptOnlyConfig();
     applyButtonEventListeners();
     applyRippleEffect();

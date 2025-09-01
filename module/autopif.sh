@@ -62,7 +62,7 @@ if [ -z "$FINGERPRINT" ] || [ -z "$SECURITY_PATCH" ]; then
 fi
 
 # Preserve previous setting
-spoofConfig="spoofBuild spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk"
+spoofConfig="spoofBuild spoofProps spoofProvider spoofSignature spoofVendingBuild spoofVendingSdk DEBUG"
 for config in $spoofConfig; do
 	if grep -q "$config=true" "$MODDIR/pif.prop"; then
 		eval "$config=true"
@@ -79,11 +79,12 @@ MANUFACTURER=Google
 MODEL=$MODEL
 SECURITY_PATCH=$SECURITY_PATCH
 spoofBuild=$spoofBuild
-spoofProvider=$spoofProvider
 spoofProps=$spoofProps
+spoofProvider=$spoofProvider
 spoofSignature=$spoofSignature
-DEBUG=$DEBUG
+spoofVendingBuild=$spoofVendingBuild
 spoofVendingSdk=$spoofVendingSdk
+DEBUG=$DEBUG
 EOF
 
 cat "$TEMPDIR/pif.prop" > /data/adb/pif.prop

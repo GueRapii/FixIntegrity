@@ -63,7 +63,7 @@ fi
 
 # Preserve previous setting
 if [ -f "/data/adb/modules/playintegrityfix/pif.prop" ]; then
-    spoofConfig="spoofBuild spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk"
+    spoofConfig="spoofBuild spoofProps spoofProvider spoofSignature spoofVendingBuild spoofVendingSdk"
     for config in $spoofConfig; do
         grep -q "$config" "/data/adb/modules/playintegrityfix/pif.prop" || continue
         if grep -q "$config=true" "/data/adb/modules/playintegrityfix/pif.prop"; then
