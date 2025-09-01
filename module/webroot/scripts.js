@@ -4,6 +4,7 @@ let scriptOnly = false;
 let shellRunning = false;
 let initialPinchDistance = null;
 let currentFontSize = 14;
+let model = null, product = null;
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
@@ -19,6 +20,7 @@ const spoofConfig = [
 // Apply button event listeners
 function applyButtonEventListeners() {
     const fetchButton = document.getElementById('fetch');
+    const viewButton = document.getElementById('view');
     const scriptOnlyToggle = document.getElementById('script-only-container');
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
@@ -26,6 +28,22 @@ function applyButtonEventListeners() {
     const githubBtn = document.getElementById('github-btn');
 
     fetchButton.addEventListener('click', runAction);
+    viewButton.addEventListener('click', async () => {
+        const result = await exec(`
+            if [ -f /data/adb/pif.prop ]; then
+                cat /data/adb/pif.prop
+            else
+                cat /data/adb/modules/playintegrityfix/pif.prop
+            fi
+        `);
+        if (result.errno === 0) {
+            const lines = result.stdout.split('\n').filter(line => line.trim() !== '');
+            lines.forEach(line => appendToOutput(line));
+            appendToOutput("");
+        } else {
+            appendToOutput(`[!] Failed to read pif.prop: ${result.stderr}`, true);
+        }
+    });
 
     scriptOnlyToggle.addEventListener('click', async () => {
         await exec(`${scriptOnly ? 'rm -rf /data/adb/pif_script_only' : 'touch /data/adb/pif_script_only'} || true
@@ -111,7 +129,14 @@ async function checkDescription() {
 // Function to load spoof config
 async function loadSpoofConfig() {
     try {
-        const { errno, stdout, stderr } = await exec(`cat /data/adb/modules/playintegrityfix/pif.prop`);
+        
+        const { errno, stdout, stderr } = await exec(`
+            if [ -f /data/adb/pif.prop ]; then
+                cat /data/adb/pif.prop
+            else
+                cat /data/adb/modules/playintegrityfix/pif.prop
+            fi
+        `);
         if (errno !== 0) throw new Error(stderr);
 
         const pifMap = parsePropToMap(stdout);
@@ -120,6 +145,8 @@ async function loadSpoofConfig() {
             const toggle = document.getElementById(`${config}-toggle`);
             toggle.checked = pifMap[config];
         });
+
+        if (model === null) model = pifMap.MODEL;
     } catch (error) {
         appendToOutput(`[!] Failed to load spoof config: ${error}`, true);
         appendToOutput('[!] Warning: Do not use third party tools to fetch pif.prop');
@@ -244,8 +271,9 @@ function appendToOutput(content, error = false) {
 function runAction() {
     if (shellRunning) return;
     muteToggle();
-    const args = ["/data/adb/modules/playintegrityfix/autopif.sh"];
-    const scriptOutput = spawn("sh", args);
+    let opts = {};
+    if (model && product) opts = { env: { MODEL: `"${model}"`, PRODUCT: `"${product}"`} };
+    const scriptOutput = spawn("sh", ["/data/adb/modules/playintegrityfix/autopif.sh"], opts);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
     scriptOutput.stderr.on('data', (data) => appendToOutput(`[!] Error executing autopif.sh: ${data}`, true));
     scriptOutput.on('exit', () => {
@@ -421,6 +449,84 @@ function loadScriptOnlyConfig() {
         });
 }
 
+/**
+ * fetch available model and array, retrieve from localStorage if last updated less than 1 day
+ * @returns {Object} - An object contain an array of model and an array of product
+ */
+function getDeviceList() {
+    const cacheKey = 'PIF_devices_list';
+    const tsKey = 'PIF_devices_list_timestamp';
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let cachedList = localStorage.getItem(cacheKey);
+    let cachedTs = localStorage.getItem(tsKey);
+
+    return new Promise((resolve) => {
+        if (cachedList && cachedTs && (now - parseInt(cachedTs, 10) < oneDayMs)) {
+            try {
+                resolve(JSON.parse(cachedList));
+                return;
+            } catch (e) {
+                // fallback to refresh if parse fails
+            }
+        }
+        let listJson = "";
+        const result = spawn('sh', ["/data/adb/modules/playintegrityfix/autopif.sh", "--list"]);
+        result.stdout.on('data', (data) => {
+            if (data.trim() === "" || data.startsWith('[')) return;
+            listJson += data;
+        });
+        result.on('exit', () => {
+            if (listJson !== "") {
+                localStorage.setItem(cacheKey, listJson);
+                localStorage.setItem(tsKey, String(Date.now()));
+                try {
+                    resolve(JSON.parse(listJson));
+                } catch (e) {
+                    appendToOutput(`[!] Error parsing devices list: ${e}`, true);
+                    resolve(null);
+                }
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+// Render available device list to select menu
+function setupDeviceList() {
+    const selectMenu = document.getElementById('select-devices');
+    selectMenu.addEventListener('change', () => {
+        const selected = selectMenu.options[selectMenu.selectedIndex];
+        model = selected.value || null;
+        product = selected.getAttribute('data-product') || null;
+    });
+
+    // Render device list
+    getDeviceList().then(deviceList => {
+        selectMenu.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = 'Random';
+        option.textContent = 'Random';
+        selectMenu.appendChild(option);
+
+        if (!deviceList || !deviceList.model || !deviceList.product) return;
+        for (let i = 0; i < deviceList.model.length; i++) {
+            const option = document.createElement('option');
+            option.value = deviceList.model[i];
+            option.textContent = deviceList.model[i];
+            option.setAttribute('data-product', deviceList.product[i] || '');
+            selectMenu.appendChild(option);
+        }
+
+        // Select previous model
+        if (model && deviceList.model.includes(model)) {
+            selectMenu.value = model;
+            selectMenu.dispatchEvent(new Event('change'));
+        }
+    });
+}
+
 function getDistance(touch1, touch2) {
     return Math.hypot(
         touch1.clientX - touch2.clientX,
@@ -440,6 +546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadSpoofConfig();
     setupSpoofConfigButton();
     loadScriptOnlyConfig();
+    setupDeviceList();
     applyButtonEventListeners();
     applyRippleEffect();
     updateAutopif();

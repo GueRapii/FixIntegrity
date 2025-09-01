@@ -17,9 +17,21 @@
             </h3>
         </div>
         <div class="button-box">
-            <div class="toggle-list ripple-element" id="fetch">
-                <div class="toggle first-toggle">
-                    <span class="toggle-text">Fetch pif.prop</span>
+            <div class="toggle-list">
+                <div class="toggle first-toggle fp-box">
+                    <div class="fp-box-border"></div>
+                    <div class="ripple-element" id="fetch">
+                        <span class="toggle-text">Fetch</span>
+                    </div>
+                    <div class="ripple-element" id="view">
+                        <div class="view-border"></div>
+                        <span class="toggle-text">View</span>
+                    </div>
+                    <div class="ripple-element" id="select">
+                        <select id="select-devices">
+                            <option value="loading">Loading</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             <div class="toggle-list script-only ripple-element" id="script-only-container">
