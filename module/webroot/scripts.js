@@ -43,7 +43,6 @@ function applyButtonEventListeners() {
             option.classList.add('advanced-show');
         });
         advanced.style.display = 'none';
-        refreshBorder();
     });
 
     clearButton.addEventListener('click', () => {
@@ -413,16 +412,12 @@ function loadScriptOnlyConfig() {
                 ) return;
                 toggle.style.display = scriptOnly ? 'none' : 'flex';
             });
-            document.getElementById('toggle-script-only').checked = scriptOnly;
-            refreshBorder();
-        });
-}
 
-function refreshBorder() {
-    const lists = Array.from(document.querySelectorAll('.toggle-list'));
-    lists.forEach(list => list.style.borderBottom = '1px solid var(--border-color)');
-    const visibleLists = lists.filter(list => getComputedStyle(list).display !== 'none');
-    if (visibleLists.length > 0) visibleLists[visibleLists.length - 1].style.borderBottom = 'none';
+            const scriptOnlyContainer = document.getElementById('script-only-container');
+            scriptOnlyContainer.querySelector('input[type=checkbox]').checked = scriptOnly
+            scriptOnlyContainer.querySelector('.toggle').classList.toggle('last-toggle', scriptOnly);
+            scriptOnlyContainer.querySelector('.toggle').classList.toggle('first-toggle', scriptOnly);
+        });
 }
 
 function getDistance(touch1, touch2) {

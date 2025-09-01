@@ -79,27 +79,36 @@ body {
 }
 
 .toggle-list {
-    display: flex;
-    align-items: center;
     background-color: var(--bg-secondary);
-    min-height: 25px;
-    padding: 8px 20px;
-    white-space: nowrap;
-    text-align: left;
-    border-bottom: 1px solid var(--border-color);;
-    position: relative;
+    padding: 0 15px;
     overflow: hidden;
     transition: opacity 0.2s ease;
 }
 
-.toggle-list:last-child {
+.toggle {
+    width: 100%;
+    min-height: 25px;
+    padding: 8px 5px;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    text-align: left;
+    position: relative;
+    border-bottom: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
+
+.first-toggle {
+    padding-top: 15px;
+}
+
+.last-toggle {
     border-bottom: none;
-    margin-bottom: 0;
+    padding-bottom: 15px;
 }
 
 .advanced-option {
     display: none;
-    max-height: 0;
     overflow: hidden;
     transition: all 0.3s ease;
     opacity: 0;
@@ -115,7 +124,7 @@ body {
 #advanced {
     justify-content: center;
     color: var(--text-muted);
-    padding: 5px;
+    padding: 8px;
 
     span {
         font-weight: normal;
