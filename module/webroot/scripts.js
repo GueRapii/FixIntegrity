@@ -474,7 +474,7 @@ function getDeviceList() {
         const result = spawn('sh', ["/data/adb/modules/playintegrityfix/autopif.sh", "--list"]);
         result.stdout.on('data', (data) => {
             if (data.trim() === "" || data.startsWith('[')) return;
-            listJson += data;
+            listJson += data.trim();
         });
         result.on('exit', () => {
             if (listJson !== "") {
@@ -493,22 +493,36 @@ function getDeviceList() {
     });
 }
 
+let selectorListener = false;
+
 // Render available device list to select menu
 function setupDeviceList() {
     const selectMenu = document.getElementById('select-devices');
-    selectMenu.addEventListener('change', () => {
-        const selected = selectMenu.options[selectMenu.selectedIndex];
-        model = selected.value || null;
-        product = selected.getAttribute('data-product') || null;
-    });
+
+    if (!selectorListener) {
+        selectMenu.addEventListener('change', () => {
+            if (selectMenu.value === 'refresh') {
+                localStorage.removeItem('PIF_devices_list');
+                localStorage.removeItem('PIF_devices_list_timestamp');
+                selectMenu.innerHTML = '<option value=loading>Loading</option>';
+                selectMenu.value = 'loading'
+                setupDeviceList();
+                return;
+            }
+
+            const selected = selectMenu.options[selectMenu.selectedIndex];
+            model = selected.value || null;
+            product = selected.getAttribute('data-product') || null;
+        });
+        selectorListener = true;
+    }
 
     // Render device list
     getDeviceList().then(deviceList => {
-        selectMenu.innerHTML = '';
-        const option = document.createElement('option');
-        option.value = 'Random';
-        option.textContent = 'Random';
-        selectMenu.appendChild(option);
+        selectMenu.innerHTML = `
+            <option value="random">Random</option>
+            <option value="refresh">Refresh List</option>
+        `;
 
         if (!deviceList || !deviceList.model || !deviceList.product) return;
         for (let i = 0; i < deviceList.model.length; i++) {

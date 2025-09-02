@@ -32,7 +32,7 @@ set_random_beta() {
 }
 
 get_model_product_list() {
-	printf "{\"model\": ["
+	printf "{\"model\":["
 	count=0
 	total=$(echo "$MODEL_LIST" | wc -l)
 	echo "$MODEL_LIST" | while read -r model; do
@@ -40,7 +40,7 @@ get_model_product_list() {
 		printf "\"%s\"" "$model"
 		[ $count -lt $total ] && printf ","
 	done
-	echo "], \"product\": ["
+	printf "],\"product\":["
 	count=0
 	total=$(echo "$PRODUCT_LIST" | wc -l)
 	echo "$PRODUCT_LIST" | while read -r product; do
@@ -48,7 +48,7 @@ get_model_product_list() {
 		printf "\"%s\"" "$product"
 		[ $count -lt $total ] && printf ","
 	done
-	echo "]}"
+	printf "]}"
 
 	rm -rf "$TEMPDIR"
 	exit 0
