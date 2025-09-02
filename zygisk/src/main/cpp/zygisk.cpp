@@ -304,6 +304,14 @@ private:
     bool isVending = false;
 };
 
+/*
+ * - The fix is public now: https://github.com/JingMatrix/NeoZygisk/commit/76d54228c7e6fe14cca93338865008946b94f7ee
+ * - Remeber to add this for all other zygisk c++ library
+ */
+extern "C" int __cxa_atexit(void (*func)(void*), void* arg, void* dso) {
+    return 0;
+}
+
 REGISTER_ZYGISK_MODULE(PlayIntegrityFix)
 
 REGISTER_ZYGISK_COMPANION(companion)

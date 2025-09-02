@@ -344,6 +344,7 @@ static void injectDex() {
     env->DeleteLocalRef(dexCl);
     env->DeleteLocalRef(classesJar);
     env->DeleteLocalRef(dexClClass);
+    env->DeleteLocalRef(systemClassLoader);
     env->DeleteLocalRef(clClass);
 
     LOGD("jni memory free");
