@@ -80,7 +80,11 @@ echo "$MODEL ($PRODUCT)"
 
 # Get device fingerprint and security patch from OTA metadata
 OTA_LINK="$(echo "$OTA_LIST" | grep "$PRODUCT")"
-busybox wget -T 10 --no-check-certificate -qO - "$OTA_LINK" | strings | head -n15 > PIXEL_ZIP_METADATA || download_fail "$OTA_LINK"
+if command -v curl > /dev/null 2>&1; then
+	curl --connect-timeout 10 -s "$OTA_LINK" | strings | head -n15 > PIXEL_ZIP_METADATA || download_fail "$OTA_LINK"
+else
+	busybox wget -T 10 --no-check-certificate -qO - "$OTA_LINK" | strings | head -n15 > PIXEL_ZIP_METADATA || download_fail "$OTA_LINK"
+fi
 FINGERPRINT="$(grep -am1 'post-build=' PIXEL_ZIP_METADATA | cut -d= -f2)"
 SECURITY_PATCH="$(grep -am1 'security-patch-level=' PIXEL_ZIP_METADATA | cut -d= -f2)"
 
