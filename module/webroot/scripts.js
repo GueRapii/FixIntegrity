@@ -505,7 +505,7 @@ function getDeviceList() {
                 // fallback to refresh if parse fails
             }
         }
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 500));
         let listJson = "";
         const result = spawn('sh', ["/data/adb/modules/playintegrityfix/autopif.sh", "--list"]);
         result.stdout.on('data', (data) => {
@@ -577,6 +577,15 @@ function setupDeviceList() {
     });
 }
 
+function checkSeLinuxStatus() {
+    exec('getenforce').then((result) => {
+        if (result.errno !== 0) return;
+        if (result.stdout.trim() === 'Permissive') {
+            appendToOutput("[!] SELinux status is permissive.", true)
+        }
+    });
+}
+
 function getDistance(touch1, touch2) {
     return Math.hypot(
         touch1.clientX - touch2.clientX,
@@ -600,4 +609,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupDeviceList();
     applyRippleEffect();
     updateAutopif();
+    checkSeLinuxStatus();
 });
