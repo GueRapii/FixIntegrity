@@ -47,6 +47,7 @@ function appendSpoofConfigToggles() {
 function applyButtonEventListeners() {
     const fetchButton = document.getElementById('fetch');
     const viewButton = document.getElementById('view');
+    const AutoPatchToggle = document.getElementById('security-patch-container');
     const scriptOnlyToggle = document.getElementById('script-only-container');
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
@@ -69,6 +70,13 @@ function applyButtonEventListeners() {
         } else {
             appendToOutput(`[!] Failed to read pif.prop: ${result.stderr}`, true);
         }
+    });
+
+    AutoPatchToggle.addEventListener('click', async () => {
+        const toggle = AutoPatchToggle.querySelector('input[type=checkbox]');
+        await exec(`sh /data/adb/modules/playintegrityfix/security_patch.sh --${toggle.checked ? 'disable' : 'enable'}`);
+        await loadAutoSecurityPatchConfig();
+        appendToOutput(`[+] ${toggle.checked ? 'Enabled' : 'Disbled'} auto security patch.`);
     });
 
     scriptOnlyToggle.addEventListener('click', async () => {
@@ -465,6 +473,20 @@ async function checkMMRL() {
     }
 }
 
+async function loadAutoSecurityPatchConfig() {
+    const toggleContainer = document.getElementById('security-patch-container');
+    await exec('[ -d "/data/adb/modules/tricky_store" ] && [ ! -e "/data/adb/modules/tricky_store/disable" ]')
+        .then(async (ts) => {
+            if (ts.errno !== 0) {
+                toggleContainer.style.display = 'none';
+            } else {
+                await exec('[ -e "/data/adb/tricky_store/pif_auto_security_patch" ]').then((enable) => {
+                    toggleContainer.querySelector('input[type=checkbox]').checked = enable.errno === 0;
+                });
+            }
+        });
+}
+
 function loadScriptOnlyConfig() {
     exec('[ -e "/data/adb/pif_script_only" ]')
         .then(({ errno }) => {
@@ -605,6 +627,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadVersionFromModuleProp();
     await loadSpoofConfig();
     setupSpoofConfigButton();
+    loadAutoSecurityPatchConfig();
     loadScriptOnlyConfig();
     setupDeviceList();
     applyRippleEffect();
