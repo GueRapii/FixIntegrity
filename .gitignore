@@ -1,0 +1,6 @@
+*
+!.gitignore
+!device_list.json
+!device_prop/
+!device_prop/*
+!HASH
