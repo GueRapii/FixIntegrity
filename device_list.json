@@ -1,0 +1,82 @@
+[
+  {
+    "model": "Pixel 6",
+    "product": "oriole_beta"
+  },
+  {
+    "model": "Pixel 6 Pro",
+    "product": "raven_beta"
+  },
+  {
+    "model": "Pixel 6a",
+    "product": "bluejay_beta"
+  },
+  {
+    "model": "Pixel 7",
+    "product": "panther_beta"
+  },
+  {
+    "model": "Pixel 7 Pro",
+    "product": "cheetah_beta"
+  },
+  {
+    "model": "Pixel 7a",
+    "product": "lynx_beta"
+  },
+  {
+    "model": "Pixel Fold",
+    "product": "felix_beta"
+  },
+  {
+    "model": "Pixel Tablet",
+    "product": "tangorpro_beta"
+  },
+  {
+    "model": "Pixel 8",
+    "product": "shiba_beta"
+  },
+  {
+    "model": "Pixel 8 Pro",
+    "product": "husky_beta"
+  },
+  {
+    "model": "Pixel 8a",
+    "product": "akita_beta"
+  },
+  {
+    "model": "Pixel 9",
+    "product": "tokay_beta"
+  },
+  {
+    "model": "Pixel 9 Pro",
+    "product": "caiman_beta"
+  },
+  {
+    "model": "Pixel 9 Pro XL",
+    "product": "komodo_beta"
+  },
+  {
+    "model": "Pixel 9 Pro Fold",
+    "product": "comet_beta"
+  },
+  {
+    "model": "Pixel 9a",
+    "product": "tegu_beta"
+  },
+  {
+    "model": "Pixel 10",
+    "product": "frankel_beta"
+  },
+  {
+    "model": "Pixel 10 Pro",
+    "product": "blazer_beta"
+  },
+  {
+    "model": "Pixel 10 Pro XL",
+    "product": "mustang_beta"
+  },
+  {
+    "model": "Pixel 10 Pro Fold",
+    "product": "rango_beta"
+  }
+]
