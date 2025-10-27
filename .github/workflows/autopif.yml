@@ -1,0 +1,153 @@
+name: autopif
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: 'Force update'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  get_rom_info:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.get_info.outputs.matrix }}
+      need_update: ${{ steps.get_info.outputs.need_update }}
+      ota_hash: ${{ steps.get_info.outputs.ota_hash }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+        ref: bot
+
+    - name: Get ROM info
+      id: get_info
+      run: |
+        download() { wget -T 20 --no-check-certificate "$1" -O "$2"; }
+
+        mkdir -p tmp && cd tmp
+        download https://developer.android.com/about/versions PIXEL_VERSIONS_HTML
+        download "$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n1)" PIXEL_LATEST_HTML
+        download "https://developer.android.com$(grep -o 'href=".*download-ota.*"' PIXEL_LATEST_HTML | grep 'qpr' | cut -d\" -f2 | head -n1)" PIXEL_OTA_HTML
+
+        # Extract device information
+        grep -A1 'tr id=' PIXEL_OTA_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;' > MODEL_LIST
+        grep -o 'tr id="[^\"]*"' PIXEL_OTA_HTML | awk -F\" '{print $2 "_beta"}' > PRODUCT_LIST
+        grep 'ota/.*_beta' PIXEL_OTA_HTML | cut -d\" -f2 > OTA_LIST
+
+        CURRENT_HASH=$(sha256sum OTA_LIST | cut -d' ' -f1)
+        LAST_HASH=$(cat ../HASH || echo '')
+
+        if [ "$CURRENT_HASH" == "$LAST_HASH" ] && [ "${{ github.event.inputs.force_update }}" != "true" ]; then
+          echo "need_update=false" >> $GITHUB_OUTPUT
+          echo "matrix={}" >> $GITHUB_OUTPUT
+          echo "ota_hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
+        else
+          echo "need_update=true" >> $GITHUB_OUTPUT
+          matrix_json=$(paste -d ',' MODEL_LIST PRODUCT_LIST OTA_LIST | jq -R 'split(",") | {model: .[0], product: .[1], ota_link: .[2]}' | jq -s . | jq -c '{include: .}')
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+          echo "ota_hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
+        fi
+
+  process_rom:
+    needs: get_rom_info
+    if: needs.get_rom_info.outputs.need_update == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.get_rom_info.outputs.matrix) }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+        ref: bot
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install git+https://github.com/5ec1cff/payload-dumper
+
+    - name: Process ROM
+      run: |
+        model="${{ matrix.model }}"
+        product="${{ matrix.product }}"
+        ota_link="${{ matrix.ota_link }}"
+
+        # Download avbtool
+        # curl -Ls https://android.googlesource.com/platform/external/avb/+/master/avbtool.py?format=TEXT | base64 -d > avbtool.py
+
+        mkdir -p tmp && cd tmp
+        # avbtool() { python3 ../avbtool.py $@; }
+
+        # Get vbmeta digest
+        # payload_dumper --partitions vbmeta --out . "$ota_link"
+        # chain_parition=$(avbtool info_image --image vbmeta.img | grep -A1 "Chain Partition descriptor:" | grep "Partition Name:" | cut -d: -f2 | tr '\n' ',' | sed 's/ //g; s/,$//g')
+        # payload_dumper --partitions "$chain_parition" --out . "$ota_link"
+        # DIGEST=$(avbtool calculate_vbmeta_digest --image vbmeta.img)
+
+        # Get other information
+        payload_dumper --metadata --out . "$ota_link"
+        FINGERPRINT=$(grep -am1 'post-build=' metadata | cut -d= -f2)
+        SECURITY_PATCH=$(grep -am1 'security-patch-level=' metadata | cut -d= -f2)
+
+        cat <<EOF > ../${product}.prop
+        FINGERPRINT=$FINGERPRINT
+        MANUFACTURER=Google
+        MODEL=$model
+        SECURITY_PATCH=$SECURITY_PATCH
+        EOF
+
+    - name: Upload digest artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{ matrix.product }}
+        path: ${{ matrix.product }}.prop
+
+  commit_and_push:
+    needs: [get_rom_info, process_rom]
+    if: needs.get_rom_info.outputs.need_update == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+        ref: bot
+
+    - name: Clean up
+      run: |
+        rm -rf device_prop/*
+
+    - name: Download all device prop
+      uses: actions/download-artifact@v5
+      with:
+        path: device_prop
+    
+    - name: Flatten artifacts
+      run: |
+        find device_prop -mindepth 2 -type f -exec mv -t device_prop/ {} +
+        find device_prop -type d -empty -delete
+
+    - name: Export formatted device list and new hash
+      run: |
+        echo '${{ needs.get_rom_info.outputs.matrix }}' | jq '.include | map({model, product})' > device_list.json
+        echo '${{ needs.get_rom_info.outputs.ota_hash }}' > HASH
+
+    - name: Commit and Push
+      run: |
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+
+        git add device_prop/** device_list.json HASH
+        git commit -m "update device list" && git push
