@@ -1,4 +1,5 @@
-import { exec, spawn, toast } from "./assets/kernelsu.js";
+import { exec, spawn, toast } from "kernelsu-alt";
+import '@material/web/all.js';
 
 let scriptOnly = false;
 let shellRunning = false;

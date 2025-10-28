@@ -13,3 +13,5 @@ local.properties
 *.zip
 .vscode
 checksum.h
+module/webroot
+webui/node_modules

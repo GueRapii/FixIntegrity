@@ -1,0 +1,21 @@
+{
+  "name": "playintegrityfix",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --emptyOutDir"
+  },
+  "keywords": [
+    "playintegrityfix"
+  ],
+  "author": "KOWX712",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "dependencies": {
+    "@material/web": "^2.4.1",
+    "kernelsu-alt": "^1.0.2",
+    "vite": "^7.1.12",
+    "vite-plugin-html": "^3.2.2"
+  }
+}
