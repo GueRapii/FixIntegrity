@@ -75,7 +75,9 @@ fi
 
 # Select and configure device
 echo "- Selecting Pixel Beta device ..."
-[ -z "$PRODUCT" ] && set_random_beta
+if [ -z "$PRODUCT" ] || ! echo "$PRODUCT_LIST" | grep -q "$PRODUCT"; then
+	set_random_beta
+fi
 echo "$MODEL ($PRODUCT)"
 
 # Get device fingerprint and security patch from OTA metadata

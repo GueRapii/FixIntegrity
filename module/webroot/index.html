@@ -4,77 +4,68 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Play Integrity Fix</title>
+    <script type="module" src="https://fastly.jsdelivr.net/npm/@material/web/all.js/+esm"></script>
     <link rel="stylesheet" href="styles.css" type="text/css">
-    <link rel="stylesheet" type="text/css" href="/mmrl/insets.css" />
     <script type="module" crossorigin src="scripts.js"></script>
 </head>
 <body>
-    <div class="content">
-        <div class="header">
-            <h3>
-                Play Integrity Fix
-                <span id="version-text"></span>
-            </h3>
-        </div>
+    <div class="header">
+        <div>Play Integrity Fix <span id="version-text"></span></div>
+        <md-icon-button id="help-btn">
+            <md-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="M478-240q21 0 35.5-14.5T528-290q0-21-14.5-35.5T478-340q-21 0-35.5 14.5T428-290q0 21 14.5 35.5T478-240Zm-36-154h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z"/></svg></md-icon>
+        </md-icon-button>
+    </div>
+    <div class="content" unresolved>
         <div class="button-box">
-            <div class="toggle-list">
-                <div class="toggle first-toggle fp-box">
-                    <div class="fp-box-border"></div>
-                    <div class="ripple-element" id="fetch">
-                        <span class="toggle-text">Fetch</span>
-                    </div>
-                    <div class="ripple-element" id="view">
-                        <div class="view-border"></div>
-                        <span class="toggle-text">View</span>
-                    </div>
-                    <div class="ripple-element" id="select">
-                        <select id="select-devices">
-                            <option value="loading">Loading</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="toggle-list ripple-element" id="security-patch-container">
-                <div class="toggle">
-                    <span class="toggle-text">Auto Security Patch</span>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="toggle-security-patch" disabled>
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-            </div>
-            <div class="toggle-list script-only ripple-element" id="script-only-container">
-                <div class="toggle">
-                    <span class="toggle-text">Script only mode</span>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="toggle-script-only" disabled>
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-            </div>
-            <!-- Spoof config -->
-            <div class="toggle-list ripple-element" id="advanced">
-                <span class="toggle-text">Advanced</span>
-            </div>
+            <!-- Action buttons -->
+            <md-chip-set class="action-buttons">
+                <md-assist-chip id="fetch" elevated="true">Fetch (GitHub)</md-assist-chip>
+                <md-assist-chip id="autopif" elevated="true">Fetch (autopif)</md-assist-chip>
+                <md-assist-chip id="view" label="View" elevated="true"></md-assist-chip>
+                <md-filter-chip id="security-patch" label="Auto security patch">
+                    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
+                </md-filter-chip>
+                <md-filter-chip id="script-only" label="Script only mode">
+                    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
+                </md-filter-chip>
+            </md-chip-set>
         </div>
+        
+        <!-- Output terminal -->
         <div class="output-terminal">
             <div class="output-terminal-header">
-                <span>output</span>
-                <div class="clear-terminal">
-                    <svg xmlns="http://www.w3.org/2000/svg" height="14px" viewBox="0 -960 960 960" width="14px" fill="#ccc"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z" /></svg>
-                    <span class="clear-terminal-text">clear</span>
-                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H160v400Zm140-40-56-56 103-104-104-104 57-56 160 160-160 160Zm180 0v-80h240v80H480Z"/></svg>
+                <md-text-button id="clear-terminal">
+                    clear
+                    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm80-160h80v-360h-80v360Zm160 0h80v-360h-80v360Z"/></svg>
+                </md-text-button>
             </div>
             <div class="output-terminal-content"></div>
         </div>
-        <div class="overlay" id="unofficial-warning">
-            <div class="overlay-content warning-content">
-                <h1>⚠️ Warning</h1>
+    </div>
+    <!-- Dialogs -->
+    <div style="z-index: 100;" unresolved>
+        <md-dialog id="unofficial-warning">
+            <div slot="headline">⚠️ Warning</div>
+            <form slot="content" method="dialog">
                 <p>This module has been tampered</p>
                 <p>Please install from official source to proceed</p>
-                <button class="warning-button ripple-element" id="github-btn">Download from GitHub</button>
-            </div>
-        </div>
+            </form>
+            <form slot="actions" method="dialog">
+                <md-filled-button id="github-btn" type="button">Download from GitHub</md-filled-button>
+            </form>
+        </md-dialog>
+
+        <md-dialog id="select-device-dialog">
+            <div slot="headline">Select Device</div>
+            <form slot="content" method="dialog" id="device-list">
+                <div>Loading...</div>
+            </form>
+            <form slot="actions" method="dialog">
+                <md-text-button id="cancel-fetch">Cancel</md-text-button>
+                <md-filled-button id="confirm-fetch">Fetch</md-filled-button>
+            </form>
+        </md-dialog>
     </div>
 </body>
 </html>
