@@ -78,13 +78,7 @@ function applyButtonEventListeners() {
     });
 
     viewBtn.onclick = async () => {
-        const result = await exec(`
-            if [ -f /data/adb/pif.prop ]; then
-                cat /data/adb/pif.prop
-            else
-                cat ${moddir}/pif.prop
-            fi
-        `);
+        const result = await exec(`cat /data/adb/pif.prop || cat ${moddir}/pif.prop`);
         if (result.errno === 0) {
             const lines = result.stdout.split('\n').filter(line => line.trim() !== '');
             lines.forEach(line => appendToOutput(line));
@@ -183,7 +177,7 @@ async function checkDescription() {
 // Function to load spoof config
 async function loadSpoofConfig() {
     try {
-        const { errno, stdout, stderr } = await exec(`test -f /data/adb/pif.prop && cat /data/adb/pif.prop || cat ${moddir}/pif.prop`);
+        const { errno, stdout, stderr } = await exec(`cat /data/adb/pif.prop || cat ${moddir}/pif.prop`);
         if (errno !== 0) throw new Error(stderr);
 
         const pifMap = parsePropToMap(stdout);
@@ -240,7 +234,7 @@ function setupSpoofConfigButton() {
             if (shellRunning) return;
             let pifFile = '';
             const result = spawn(`
-                [ ! -f ${moddir}/pif.prop ] || echo "${moddir}/pif.prop"
+                echo "${moddir}/pif.prop"
                 [ ! -f /data/adb/pif.prop ] || echo "/data/adb/pif.prop"
             `);
             result.stdout.on('data', (data) => pifFile += data + '\n');
@@ -322,7 +316,11 @@ function updateSpoofConfig(toggle, type, pifFile) {
     }
 }
 
-// Function to append element in output terminal
+/**
+ * Append line to fake terminal
+ * @param {string} content - text to display
+ * @param {boolean} error - true: show text in red
+ */
 function appendToOutput(content, error = false) {
     const output = document.querySelector('.output-terminal-content');
     if (content.trim() === "") {
@@ -551,6 +549,22 @@ function setupDeviceList() {
         });
 }
 
+// Notify if pif.prop security patch is more than 60 days
+function checkPropDate() {
+    exec(`
+        prop_date="$(grep "^SECURITY_PATCH=" /data/adb/pif.prop ${moddir}/pif.prop 2>/dev/null | cut -d'=' -f2 | head -n 1)"
+        prop_epoch="$(busybox date -d "$prop_date" +%s)"
+        current_epoch="$(busybox date +%s)"
+        different="$(($current_epoch - $prop_epoch))"
+        if [ $different -gt 5184000 ]; then
+            # 60d * 24h * 60m * 60s = 5184000
+            echo "[!] pif.prop is likely outdated, consider fetching once to update it."
+        fi
+    `, { env: { PATH: "$PATH:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk" }}).then((result) => {
+        if (result.stdout.trim() !== '') appendToOutput(result.stdout.trim(), true);
+    });
+}
+
 function checkSeLinuxStatus() {
     exec('getenforce').then((result) => {
         if (result.errno !== 0) return;
@@ -634,6 +648,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupDeviceList();
     updateAutopif();
     checkSeLinuxStatus();
+    checkPropDate();
 
     document.querySelectorAll('[unresolved]').forEach(el => el.removeAttribute('unresolved'));
 });
