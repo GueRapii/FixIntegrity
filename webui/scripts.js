@@ -44,6 +44,7 @@ function appendSpoofConfigToggles() {
 function applyButtonEventListeners() {
     const fetchBtn = document.getElementById('fetch');
     const autopifBtn = document.getElementById('autopif');
+    const randomRadio = document.getElementById('random');
     const viewBtn = document.getElementById('view');
     const securityPatchBtn = document.getElementById('security-patch');
     const scriptOnlyBtn = document.getElementById('script-only');
@@ -54,9 +55,27 @@ function applyButtonEventListeners() {
     const githubBtn = document.getElementById('github-btn');
     const helpBtn = document.getElementById('help-btn');
 
-    fetchBtn.onclick = () => selectDeviceDialog.show();
+    fetchBtn.onclick = () => {
+        if (randomRadio.checked) randomRadio.checked = false;
+        selectDeviceDialog.show();
+    }
 
     autopifBtn.onclick = runAction;
+
+    randomRadio.addEventListener('change', (e) => {
+        if (!e.target.checked) return;
+        const deviceList = document.querySelectorAll('.device-list-option');
+        if (deviceList.length >= 2) {
+            // Exclude index 0 to avoid selecting the random radio itself
+            const randomIndex = Math.floor(Math.random() * (deviceList.length - 1)) + 1;
+            product = deviceList[randomIndex].querySelector('md-radio').value;
+            model = deviceList[randomIndex].querySelector('span').textContent;
+        } else {
+            model = null;
+            product = null;
+            confirmFetchBtn.disabled = true;
+        }
+    });
 
     viewBtn.onclick = async () => {
         const result = await exec(`
@@ -90,14 +109,11 @@ function applyButtonEventListeners() {
 
     confirmFetchBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const deviceList = document.getElementById('device-list');
-        deviceList.querySelectorAll('md-radio').forEach(item => {
+        document.querySelectorAll('.device-list-option md-radio').forEach(item => {
             if (!item.checked) return;
-            product = item.value;
-            model = item.getAttribute('data-model');
             fetchPifProp();
             selectDeviceDialog.close();
-        })
+        });
     });
 
     clearButton.onclick = () => {
@@ -448,7 +464,7 @@ function fetchPifProp() {
             return response.text();
         })
         .catch(error => {
-            return fetch(`https://raw.gitmirror.com/${repository}/bot/device_prop/${product}.prop`)
+            return fetch(`https://hub.gitmirror.com/raw.githubusercontent.com/${repository}/bot/device_prop/${product}.prop`)
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.text();
@@ -495,7 +511,7 @@ function setupDeviceList() {
             return response.json();
         })
         .catch(error => {
-            return fetch(`https://raw.gitmirror.com/${repository}/bot/device_list.json`)
+            return fetch(`https://hub.gitmirror.com/raw.githubusercontent.com/${repository}/bot/device_list.json`)
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.json();
@@ -503,7 +519,7 @@ function setupDeviceList() {
         })
         .then(devices => {
             if (!Array.isArray(devices)) throw new Error('Invalid device list format');
-            list.innerHTML = '';
+            list.querySelector('#device-list-loading').remove();
             devices.forEach(device => {
                 if (device.model && device.product) {
                     const label = document.createElement('label');
@@ -530,7 +546,7 @@ function setupDeviceList() {
             });
         })
         .catch(error => {
-            list.innerHTML = '<div>Failed to load device list</div>';
+            list.querySelector('#device-list-loading').innerHTML = '<div>Failed to load device list</div>';
             document.getElementById('confirm-fetch').disabled = true;
         });
 }
@@ -556,6 +572,56 @@ function updateFontSize(newSize) {
     const terminal = document.querySelector('.output-terminal-content');
     terminal.style.fontSize = `${currentFontSize}px`;
 }
+
+// Overwrite default dialog animation
+document.querySelectorAll('md-dialog').forEach(dialog => {
+    const originalGetOpenAnimation = dialog.getOpenAnimation;
+    const originalGetCloseAnimation = dialog.getCloseAnimation;
+
+    dialog.getOpenAnimation = () => {
+        const defaultAnim = originalGetOpenAnimation ? originalGetOpenAnimation.call(dialog) : {};
+        const customAnim = {};
+        Object.keys(defaultAnim).forEach(key => customAnim[key] = defaultAnim[key]);
+
+        customAnim.dialog = [
+            [
+                [{ opacity: 0, transform: 'translateY(50px)' }, { opacity: 1, transform: 'translateY(0)' }],
+                { duration: 300, easing: 'ease' }
+            ]
+        ];
+        customAnim.scrim = [
+            [
+                [{'opacity': 0}, {'opacity': 0.32}],
+                {duration: 300, easing: 'linear'},
+            ],
+        ];
+        customAnim.container = [];
+
+        return customAnim;
+    };
+
+    dialog.getCloseAnimation = () => {
+        const defaultAnim = originalGetCloseAnimation ? originalGetCloseAnimation.call(dialog) : {};
+        const customAnim = {};
+        Object.keys(defaultAnim).forEach(key => customAnim[key] = defaultAnim[key]);
+
+        customAnim.dialog = [
+            [
+                [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-50px)' }],
+                { duration: 300, easing: 'ease' }
+            ]
+        ];
+        customAnim.scrim = [
+            [
+                [{'opacity': 0.32}, {'opacity': 0}],
+                {duration: 300, easing: 'linear'},
+            ],
+        ];
+        customAnim.container = [];
+
+        return customAnim;
+    };
+});
 
 document.addEventListener('DOMContentLoaded', async () => {
     checkMMRL();

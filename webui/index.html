@@ -18,8 +18,7 @@
         <div class="button-box">
             <!-- Action buttons -->
             <md-chip-set class="action-buttons">
-                <md-assist-chip id="fetch" elevated="true">Fetch (GitHub)</md-assist-chip>
-                <md-assist-chip id="autopif" elevated="true">Fetch (autopif)</md-assist-chip>
+                <md-assist-chip id="fetch" label="Fetch" elevated="true"></md-assist-chip>
                 <md-assist-chip id="view" label="View" elevated="true"></md-assist-chip>
                 <md-filter-chip id="security-patch" label="Auto security patch">
                     <svg slot="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
@@ -58,11 +57,17 @@
         <md-dialog id="select-device-dialog">
             <div slot="headline">Select Device</div>
             <form slot="content" method="dialog" id="device-list">
-                <div>Loading...</div>
+                <label class="device-list-option">
+                    <md-radio name="device" id="random"></md-radio>
+                    <span aria-hidden="true">Random</span>
+                </label>
+                <md-divider></md-divider>
+                <div id="device-list-loading">Loading...</div>
             </form>
             <form slot="actions" method="dialog">
                 <md-text-button id="cancel-fetch">Cancel</md-text-button>
-                <md-filled-button id="confirm-fetch">Fetch</md-filled-button>
+                <md-outlined-button id="autopif">Autopif</md-outlined-button>
+                <md-filled-button id="confirm-fetch">GitHub</md-filled-button>
             </form>
         </md-dialog>
     </div>

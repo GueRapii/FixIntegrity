@@ -140,6 +140,15 @@ label {
     --md-sys-color-on-primary: var(--md-sys-color-on-tertiary);
 }
 
+#select-device-dialog {
+    width: calc(100% - 32px);
+    max-width: 800px;
+}
+
+#cancel-fetch {
+    margin-right: auto;
+}
+
 #device-list {
     display: flex;
     flex-direction: column;
