@@ -161,6 +161,36 @@ label {
     gap: 16px;
 }
 
+.help-subtitile {
+    font-size: 1.3em;
+}
+
+.help-block {
+    margin-bottom: 32px;
+}
+
+.help-block p {
+    margin: 0;
+}
+
+.help-block ul {
+    padding: 0 16px;
+}
+
+.help-code {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-radius: 8px;
+    background-color: var(--md-sys-color-surface-variant);
+    word-break: break-all;
+}
+
+.help-code md-outlined-icon-button {
+    flex-shrink: 0;
+    --md-sys-shape-corner-full: 8px;
+}
+
 @media (orientation: landscape) {
     .content {
         flex-direction: row;

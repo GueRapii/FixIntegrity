@@ -1,5 +1,6 @@
 import { exec, spawn, toast } from "kernelsu-alt";
 import '@material/web/all.js';
+import { translations, loadTranslations } from './locales.js';
 
 let scriptOnly = false;
 let shellRunning = false;
@@ -54,6 +55,8 @@ function applyButtonEventListeners() {
     const confirmFetchBtn = document.getElementById('confirm-fetch');
     const githubBtn = document.getElementById('github-btn');
     const helpBtn = document.getElementById('help-btn');
+    const helpDialog = document.getElementById('help-dialog');
+    const romSignCheck = document.getElementById('rom-sign-check');
 
     fetchBtn.onclick = () => {
         if (randomRadio.checked) randomRadio.checked = false;
@@ -84,21 +87,21 @@ function applyButtonEventListeners() {
             lines.forEach(line => appendToOutput(line));
             appendToOutput("");
         } else {
-            appendToOutput(`[!] Failed to read pif.prop: ${result.stderr}`, true);
+            appendToOutput(`[!] ${translations.output_error_read_pif_prop}: ${result.stderr}`, true);
         }
     }
 
     securityPatchBtn.onclick = async () => {
         await exec(`sh ${moddir}/security_patch.sh --${securityPatchBtn.selected ? 'enable' : 'disable'}`);
         await loadAutoSecurityPatchConfig();
-        appendToOutput(`[+] ${securityPatchBtn.selected ? 'Enabled' : 'Disbled'} auto security patch.`);
+        appendToOutput(`[+] ${securityPatchBtn.selected ? translations.output_enabled : translations.output_disabled} auto security patch.`);
     }
 
     scriptOnlyBtn.onclick = async () => {
         await exec(`${scriptOnly ? 'rm -rf /data/adb/pif_script_only' : 'touch /data/adb/pif_script_only'} || true`);
         killGms();
         loadScriptOnlyConfig();
-        appendToOutput(`[+] ${scriptOnly ? 'Disabled' : 'Enabled'} script only mode.`);
+        appendToOutput(`[+] ${scriptOnly ? translations.output_disabled : translations.output_enabled} script only mode.`);
     }
 
     confirmFetchBtn.addEventListener('click', (e) => {
@@ -143,7 +146,19 @@ function applyButtonEventListeners() {
     });
     
     githubBtn.onclick = () => linkRedirect(`https://github.com/${repository}/releases/latest`);
-    helpBtn.onclick = () => linkRedirect(`https://github.com/${repository}#options`);
+    helpBtn.onclick = () => helpDialog.show();
+
+    romSignCheck.onclick = () => {
+        const command = romSignCheck.parentElement.querySelector('code').textContent;
+        appendToOutput(command);
+        appendToOutput('');
+        exec(command).then((result) => {
+            const isSuccess = result.errno === 0;
+            setTimeout(() => {
+                appendToOutput(isSuccess ? result.stdout : result.stderr, !isSuccess);
+            }, 600);
+        });
+    }
 }
 
 function linkRedirect(link) {
@@ -188,8 +203,8 @@ async function loadSpoofConfig() {
 
         if (model === null) model = pifMap.MODEL;
     } catch (error) {
-        appendToOutput(`[!] Failed to load spoof config: ${error}`, true);
-        appendToOutput('[!] Warning: Do not use third party tools to fetch pif.prop');
+        appendToOutput(`[!] ${translations.output_error_load_spoof_config}: ${error}`, true);
+        appendToOutput('[!] ' + translations.output_warning_third_party_tool);
         resetPifProp();
     }
 }
@@ -202,7 +217,7 @@ function resetPifProp() {
             return response.text();
         })
         .catch(error => {
-            return fetch(`https://raw.gitmirror.com/${repository}/${branch}/module/pif.prop`)
+            return fetch(`https://hub.gitmirror.com/raw.githubusercontent.com/${repository}/${branch}/module/pif.prop`)
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.text();
@@ -212,16 +227,16 @@ function resetPifProp() {
             const pifProp = text.trim();
             const { errno, stderr } = await exec(`
                 echo '${pifProp}' > ${moddir}/pif.prop
-                rm -f /data/adb/pif.prop || true
+                rm -f /data/adb/pif.prop
             `);
             if (errno === 0) {
-                appendToOutput(`[+] Successfully reset pif.prop`);
+                appendToOutput('[+] ' + translations.output_reset_pif_prop);
             } else {
-                appendToOutput(`[!] Failed to reset pif.prop: ${stderr}`, true);
+                throw new Error(stderr);
             }
         })
         .catch(error => {
-            appendToOutput(`[!] Failed to reset pif.prop: ${error.message}`);
+            appendToOutput(`[!] ${translations.output_error_reset_failed}: ${error.message}`, true);
         });
 }
 
@@ -238,7 +253,6 @@ function setupSpoofConfigButton() {
                 [ ! -f /data/adb/pif.prop ] || echo "/data/adb/pif.prop"
             `);
             result.stdout.on('data', (data) => pifFile += data + '\n');
-            result.stderr.on('data', (data) => appendToOutput(`[!] Failed to find pif.prop: ` + data, true));
             result.on('exit',  (code) => {
                 if (code !== 0) return;
                 updateSpoofConfig(toggle, item.config, pifFile);
@@ -284,7 +298,7 @@ function updateSpoofConfig(toggle, type, pifFile) {
                     if (code === 0) {
                         if (prompted) return;
                         prompted = true;
-                        appendToOutput(`[+] ${toggle.selected ? "Enabled" : "Disabled"} ${type}`);
+                        appendToOutput(`[+] ${toggle.selected ? translations.output_enabled : translations.output_disabled} ${type}`);
                     } else {
                         throw new Error('Failed to write ' + pifFile);
                     }
@@ -292,26 +306,13 @@ function updateSpoofConfig(toggle, type, pifFile) {
 
                 // reminder
                 if (!reminded && (type === "spoofVendingBuild" || type === "spoofVendingSdk") && pifMap.spoofVendingBuild && pifMap.spoofVendingSdk) {
-                    appendToOutput('[!] spoofVendingSdk will not take effect when spoofVendingBuild is enabled.');
+                    appendToOutput('[!] ' + translations.output_spoofVendingSdk_spoofVendingBuild);
                     reminded = true;
-                }
-
-                // reminder
-                if (!reminded && type === "spoofSignature") {
-                    reminded = true;
-                    const signature = await exec('unzip -l /system/etc/security/otacerts.zip | grep -oE "testkey|releasekey"');
-                    if (signature.errno === 0) {
-                        if (signature.stdout.trim() === "testkey" && !pifMap.spoofSignature) {
-                            appendToOutput('[!] Unsigned ROM detected, enable spoofSignature to fix.');
-                        } else if (signature.stdout.trim() === "releasekey" && pifMap.spoofSignature) {
-                            appendToOutput('[+] Signed ROM detected, enabling spoofSignature might not be useful.');
-                        }
-                    }
                 }
             });
         } catch (error) {
             console.error(`Failed to update ${pifFile}:`, error);
-            appendToOutput(`[!] Failed to ${toggle.selected ? "enable" : "disable"} ${item.config}`);
+            appendToOutput(`[!] ${toggle.selected ? output_error_enable_failed : output_error_disable_failed} ${item.config}`);
         }
     }
 }
@@ -344,13 +345,8 @@ function runAction() {
     if (model && product) opts = { env: { MODEL: `"${model}"`, PRODUCT: `"${product}"`} };
     const scriptOutput = spawn("sh", [`${moddir}/autopif.sh`], opts);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
-    scriptOutput.stderr.on('data', (data) => appendToOutput(`[!] Error executing autopif.sh: ${data}`, true));
+    scriptOutput.stderr.on('data', (data) => appendToOutput(data, true));
     scriptOutput.on('exit', () => {
-        appendToOutput("");
-        muteToggle(false);
-    });
-    scriptOutput.on('error', () => {
-        appendToOutput("[!] Error: Fail to execute autopif.sh", true);
         appendToOutput("");
         muteToggle(false);
     });
@@ -360,13 +356,8 @@ function updateAutopif() {
     muteToggle(true);
     const scriptOutput = spawn("sh", [`${moddir}/autopif_ota.sh`]);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
-    scriptOutput.stderr.on('data', (data) => appendToOutput(`[!] Error executing autopif_ota.sh: ${data}`, true));
+    scriptOutput.stderr.on('data', (data) => appendToOutput(data, true));
     scriptOutput.on('exit', () => muteToggle(false));
-    scriptOutput.on('error', () => {
-        appendToOutput("[!] Error: Fail to execute autopif_ota.sh", true);
-        appendToOutput("");
-        muteToggle(false);
-    });
 }
 
 function muteToggle(mute, scriptOnly = null) {
@@ -454,7 +445,7 @@ function loadScriptOnlyConfig() {
 }
 
 function fetchPifProp() {
-    appendToOutput("[+] Fetching pif.prop from GitHub...");
+    appendToOutput("[+] " + translations.output_fetching_from_github);
     appendToOutput("");
     fetch(`https://raw.githubusercontent.com/${repository}/bot/device_prop/${product}.prop`)
         .then(response => {
@@ -489,13 +480,13 @@ fi
                 if (result.errno === 0) {
                     result.stdout.split('\n').forEach(line => appendToOutput(line));
                 } else {
-                    appendToOutput("[!] Failed to write /data/adb/pif.prop: " + result.stderr, true);
+                    appendToOutput(`[!] ${translations.output_error_write_pif_prop}: ` + result.stderr, true);
                 }
                 killGms();
             });
         })
         .catch(error => {
-            appendToOutput('[!] Failed to fetch pif.prop: ' + error, true);
+            appendToOutput(`[!] ${translations.output_error_fetch_pif_prop}: ` + error, true);
         });
 }
 
@@ -544,7 +535,7 @@ function setupDeviceList() {
             });
         })
         .catch(error => {
-            list.querySelector('#device-list-loading').innerHTML = '<div>Failed to load device list</div>';
+            list.querySelector('#device-list-loading').innerHTML = `<div>${translations.device_list_load_failed}</div>`;
             document.getElementById('confirm-fetch').disabled = true;
         });
 }
@@ -558,20 +549,35 @@ function checkPropDate() {
         different="$(($current_epoch - $prop_epoch))"
         if [ $different -gt 5184000 ]; then
             # 60d * 24h * 60m * 60s = 5184000
-            echo "[!] pif.prop is likely outdated, consider fetching once to update it."
+            echo "outdated"
         fi
     `, { env: { PATH: "$PATH:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk" }}).then((result) => {
-        if (result.stdout.trim() !== '') appendToOutput(result.stdout.trim(), true);
+        if (result.stdout.includes("outdated")) appendToOutput('[!] ' + translations.output_oudated_pif_prop, true);
     });
 }
 
+// Notify when selinux is permissive
 function checkSeLinuxStatus() {
     exec('getenforce').then((result) => {
         if (result.errno !== 0) return;
         if (result.stdout.trim() === 'Permissive') {
-            appendToOutput("[!] SELinux status is permissive.", true)
+            appendToOutput("[!] " + translations.output_selinux_permissive, true)
         }
     });
+}
+
+// Notify spoofSignature is on/off when rom is signed with releasekey/testkey
+function checkRomSignature() {
+    const toggle = document.getElementById('spoofSignature-toggle');
+    exec('unzip -l /system/etc/security/otacerts.zip | grep -oE "testkey|releasekey"').then((signature) => {
+        if (signature.errno === 0) {
+            if (signature.stdout.trim() === "testkey" && !toggle.selected) {
+                appendToOutput('[!] ' + translations.output_testkey);
+            } else if (signature.stdout.trim() === "releasekey" && toggle.selected) {
+                appendToOutput('[+] ' + translations.output_releasekey);
+            }
+        }
+    }).catch(() => {});
 }
 
 function getDistance(touch1, touch2) {
@@ -638,6 +644,7 @@ document.querySelectorAll('md-dialog').forEach(dialog => {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await loadTranslations();
     checkMMRL();
     appendSpoofConfigToggles();
     loadVersionFromModuleProp();
@@ -649,6 +656,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateAutopif();
     checkSeLinuxStatus();
     checkPropDate();
+    checkRomSignature();
 
     document.querySelectorAll('[unresolved]').forEach(el => el.removeAttribute('unresolved'));
 });
