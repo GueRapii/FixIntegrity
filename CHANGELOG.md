@@ -2,6 +2,13 @@
 
 Play Integrity Fix [INJECT] - fork by KOWX712
 
+## v4.4
+
+- New WebUI interface, built-in help menu, rewrite with [Material Web Component](https://material-web.dev).
+- New Fetch pif.prop via GitHub feature, exclusive for WebUI, not relying on curl/wget but using fetch api from browser.
+- WebUI localization support, view [GUIDE.md](https://github.com/KOWX712/PlayIntegrityFix/blob/inject_s/webui/public/locales/GUIDE.md).
+- Proper fix for zygisk cxa_atexit detection via [GitHub@5ec1cff/local_cxa_atexit_finalize_impl](https://github.com/5ec1cff/local_cxa_atexit_finalize_impl).
+
 ## v4.3
 
 - Drop preview option
