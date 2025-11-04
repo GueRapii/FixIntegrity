@@ -1,5 +1,11 @@
 # Play Integrity Fix WebUI Translation Contributor List
 
+## Arabic
+
+- [ZG089](https://github.com/ZG089)
+
+---
+
 ## Bahasa Indonesia
 
 - [yourbestregard](https://github.com/yourbestregard)
