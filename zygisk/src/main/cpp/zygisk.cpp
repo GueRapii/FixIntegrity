@@ -98,6 +98,10 @@ static uint32_t crc32(const uint8_t *data, size_t len) {
 }
 
 static bool verifyModule(const char *path, const char *expected_hex) {
+    bool update = (access("/data/adb/modules/playintegrityfix/update", F_OK) == 0);
+    if (update)
+        return true;
+
     int fd = open(path, O_RDWR);
     if (fd < 0)
         return false;
