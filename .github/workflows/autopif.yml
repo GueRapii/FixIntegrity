@@ -20,7 +20,7 @@ jobs:
       ota_hash: ${{ steps.get_info.outputs.ota_hash }}
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         fetch-depth: 1
         ref: bot
@@ -63,7 +63,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         fetch-depth: 1
         ref: bot
@@ -109,7 +109,7 @@ jobs:
         EOF
 
     - name: Upload digest artifact
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ matrix.product }}
         path: ${{ matrix.product }}.prop
@@ -120,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         fetch-depth: 1
         ref: bot
@@ -130,7 +130,7 @@ jobs:
         rm -rf device_prop/*
 
     - name: Download all device prop
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v7
       with:
         path: device_prop
     

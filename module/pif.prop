@@ -1,7 +1,7 @@
-FINGERPRINT=google/panther_beta/panther:16/BP41.250916.012.A1/14330953:user/release-keys
+FINGERPRINT=google/oriole_beta/oriole:CANARY/ZP11.251121.010/14518957:user/release-keys
 MANUFACTURER=Google
-MODEL=Pixel 7
-SECURITY_PATCH=2025-10-05
+MODEL=Pixel 6
+SECURITY_PATCH=2025-12-05
 spoofBuild=true
 spoofProps=false
 spoofProvider=false
