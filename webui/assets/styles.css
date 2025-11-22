@@ -107,6 +107,11 @@ label {
     --md-sys-color-primary: var(--md-sys-color-outline);
 }
 
+[dir="rtl"] #clear-terminal {
+    margin-left: -12px;
+    margin-right: unset;
+}
+
 .output-terminal-content {
     font-family: monospace;
     font-size: 14px;

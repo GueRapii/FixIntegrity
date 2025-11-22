@@ -68,7 +68,7 @@ async function detectUserLanguage() {
  * Load translations dynamically based on the selected language
  * @returns {Promise<void>}
  */
-export async function loadTranslations() {
+export async function loadTranslations(lang) {
     try {
         // load Englsih as base translations
         const baseResponse = await fetch('./locales/strings/en.xml');
@@ -76,7 +76,7 @@ export async function loadTranslations() {
         baseTranslations = parseTranslationsXML(baseXML);
 
         // load user's language if available
-        const lang = await detectUserLanguage();
+        if (!lang) lang = await detectUserLanguage();
         if (lang !== 'en') {
             const response = await fetch(`locales/strings/${lang}.xml`);
             const userXML = await response.text();
@@ -94,6 +94,7 @@ export async function loadTranslations() {
     }
     applyTranslations();
 }
+window.loadTranslations = loadTranslations;
 
 /**
  * Apply translations to all elements with data-i18n attributes

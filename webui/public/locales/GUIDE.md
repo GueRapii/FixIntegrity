@@ -27,7 +27,11 @@
 
 - **How to switch language?**
 
-  Not supported, it will follow system locales for now, let me know if you really need it.
+- Not supported in user end, it will follow system locales for now.
+- You can set it manully with browser console: 
+  ```javascript
+  loadTranslations('zh-CN');
+  ```
 
 ## Future plan
 
