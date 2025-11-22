@@ -68,10 +68,36 @@ label {
 
 .spoof-option {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 8px;
     padding: 8px 16px;
     position: relative;
+}
+
+.spoof-option md-switch {
+    margin-left : auto;
+}
+
+[dir="rtl"] .spoof-option md-switch {
+    margin-right : auto;
+    margin-left: unset;
+}
+
+.spoof-option-tag {
+    background-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+
+    svg {
+        height: 8px;
+        width: 8px;
+        fill: var(--md-sys-color-on-primary);
+    }
 }
 
 .output-terminal {
