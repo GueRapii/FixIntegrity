@@ -23,7 +23,7 @@
     <string name="output_error_fetching_pif_prop">Failed to fetch pif.prop</string>
     <string name="output_oudated_pif_prop">pif.prop is likely outdated, consider fetching once to update it.</string>
     <string name="output_selinux_permissive">SELinux status is permissive.</string>
-    <string name="output_testkey">ROM sigened with testkey, enable spoofSignature is recommended.</string>
+    <string name="output_testkey">ROM signed with testkey, enable spoofSignature is recommended.</string>
     <string name="output_releasekey">ROM signed with releasekey, enabling spoofSignature might not be useful.</string>
     <!-- Device list dialog -->
     <string name="device_list_title">Select Device</string>
