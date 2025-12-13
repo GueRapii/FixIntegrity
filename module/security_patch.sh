@@ -2,11 +2,12 @@
 
 # Tricky Store Security Patch Util
 
+MODDIR="/data/adb/modules/playintegrityfix"
 AUTO_FLAG="/data/adb/tricky_store/pif_auto_security_patch"
 
 case "$1" in
     --enable) touch "$AUTO_FLAG";;
-    --disable) rm -f "$AUTO_FLAG"; exit;;
+    --disable) rm -f "$AUTO_FLAG" "$MODDIR/system.prop"; exit;;
 esac
 
 if [ -f "/data/adb/pif.prop" ]; then
@@ -61,3 +62,8 @@ elif [ "$FILE_NAME" = "devconfig.toml" ]; then
         fi
     fi
 fi
+
+cat << EOF > $MODDIR/system.prop
+ro.build.version.security_patch=$SECURITY_PATCH
+ro.vendor.build.security_patch=$SECURITY_PATCH
+EOF

@@ -128,6 +128,8 @@ echo "- new pif.prop saved to /data/adb/pif.prop"
 
 if [ -e "/data/adb/tricky_store/pif_auto_security_patch" ]; then
 	sh "$MODDIR/security_patch.sh"
+else
+	rm -f $MODDIR/system.prop
 fi
 
 echo "- Cleaning up ..."
