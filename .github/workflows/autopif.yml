@@ -38,7 +38,10 @@ jobs:
         # Extract device information
         grep -A1 'tr id=' PIXEL_OTA_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g' > MODEL_LIST
         grep -o 'tr id="[^\"]*"' PIXEL_OTA_HTML | awk -F\" '{print $2 "_beta"}' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g' > PRODUCT_LIST
-        grep 'ota/.*_beta' PIXEL_OTA_HTML | cut -d\" -f2 > OTA_LIST
+        for i in $(cat PRODUCT_LIST); do
+          OTA_LINK=$(grep "ota/$i" PIXEL_OTA_HTML | cut -d\" -f2 || echo "")
+          echo "$OTA_LINK" >> OTA_LIST
+        done
 
         CURRENT_HASH=$(sha256sum OTA_LIST | cut -d' ' -f1)
         LAST_HASH=$(cat ../HASH || echo '')
@@ -49,7 +52,7 @@ jobs:
           echo "ota_hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
         else
           echo "need_update=true" >> $GITHUB_OUTPUT
-          matrix_json=$(paste -d ',' MODEL_LIST PRODUCT_LIST OTA_LIST | jq -R 'split(",") | {model: .[0], product: .[1], ota_link: .[2]}' | jq -s . | jq -c '{include: .}')
+          matrix_json=$(paste -d ',' MODEL_LIST PRODUCT_LIST OTA_LIST | jq -R 'split(",") | {model: .[0], product: .[1], ota_link: .[2]}' | jq -s '{include: [.[] | select(.ota_link != "")]}' | jq -c .)
           echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
           echo "ota_hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
         fi
@@ -144,5 +147,5 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git config --global user.name "github-actions[bot]"
 
-        git add device_prop/** device_list.json HASH
+        git add device_prop/. device_list.json HASH
         git commit -m "update device list" && git push
