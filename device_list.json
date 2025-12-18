@@ -8,10 +8,6 @@
     "product": "raven_beta"
   },
   {
-    "model": "Pixel 6a",
-    "product": "bluejay_beta"
-  },
-  {
     "model": "Pixel 7",
     "product": "panther_beta"
   },
@@ -62,21 +58,5 @@
   {
     "model": "Pixel 9a",
     "product": "tegu_beta"
-  },
-  {
-    "model": "Pixel 10",
-    "product": "frankel_beta"
-  },
-  {
-    "model": "Pixel 10 Pro",
-    "product": "blazer_beta"
-  },
-  {
-    "model": "Pixel 10 Pro XL",
-    "product": "mustang_beta"
-  },
-  {
-    "model": "Pixel 10 Pro Fold",
-    "product": "rango_beta"
   }
 ]
