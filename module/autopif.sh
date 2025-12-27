@@ -54,19 +54,18 @@ get_model_product_list() {
 	exit 0
 }
 
-# Get latest Pixel Beta information
+# Get latest Pixel Canary information
 download https://developer.android.com/about/versions PIXEL_VERSIONS_HTML
-BETA_URL=$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n1)
-download "$BETA_URL" PIXEL_LATEST_HTML
+LATEST_URL=$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n1)
+download "$LATEST_URL" PIXEL_LATEST_HTML
 
-# Get OTA information
-OTA_URL="https://developer.android.com$(grep -o 'href=".*download-ota.*"' PIXEL_LATEST_HTML | grep 'qpr' | cut -d\" -f2 | head -n1)"
-download "$OTA_URL" PIXEL_OTA_HTML
+# Get FI information
+FI_URL="https://developer.android.com$(grep -o 'href=".*download.*"' PIXEL_LATEST_HTML | grep 'qpr' | cut -d\" -f2 | head -n1)"
+download "$FI_URL" PIXEL_FI_HTML
 
 # Extract device information
-MODEL_LIST="$(grep -A1 'tr id=' PIXEL_OTA_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;')"
-PRODUCT_LIST="$(grep -o 'tr id="[^"]*"' PIXEL_OTA_HTML | awk -F\" '{print $2 "_beta"}')"
-OTA_LIST="$(grep 'ota/.*_beta' PIXEL_OTA_HTML | cut -d\" -f2)"
+MODEL_LIST="$(grep -A1 'tr id=' PIXEL_FI_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;')"
+PRODUCT_LIST="$(grep -o 'tr id="[^"]*"' PIXEL_FI_HTML | awk -F\" '{print $2 "_beta"}')"
 
 # List available devices
 if [ "$1" = "--list" ] || [ "$1" = "-l" ]; then
@@ -74,26 +73,33 @@ if [ "$1" = "--list" ] || [ "$1" = "-l" ]; then
 fi
 
 # Select and configure device
-echo "- Selecting Pixel Beta device ..."
+echo "- Selecting Pixel Canary device ..."
 if [ -z "$PRODUCT" ] || ! echo "$PRODUCT_LIST" | grep -q "$PRODUCT"; then
 	set_random_beta
 fi
 echo "$MODEL ($PRODUCT)"
 
-# Get device fingerprint and security patch from OTA metadata
-OTA_LINK="$(echo "$OTA_LIST" | grep "$PRODUCT")"
+# Get device fingerprint and security patch from Flash Tool and bulletins
+DEVICE="$(echo "$PRODUCT" | sed 's/_beta//')"
+download https://flash.android.com PIXEL_FLASH_HTML
+FLASH_KEY=$(grep -o '<body data-client-config=.*' PIXEL_FLASH_HTML | cut -d\; -f2 | cut -d\& -f1)
 if command -v curl > /dev/null 2>&1; then
-	curl --connect-timeout 10 -s "$OTA_LINK" | strings | head -n15 > PIXEL_ZIP_METADATA || download_fail "$OTA_LINK"
+	curl --connect-timeout 10 -H "Referer: https://flash.android.com" -s "https://content-flashstation-pa.googleapis.com/v1/builds?product=$PRODUCT&key=$FLASH_KEY" > PIXEL_STATION_JSON || download_fail "https://flash.android.com"
 else
-	busybox wget -T 10 --no-check-certificate -qO - "$OTA_LINK" | strings | head -n15 > PIXEL_ZIP_METADATA || download_fail "$OTA_LINK"
+	busybox wget -T 10 --header "Referer: https://flash.android.com" -qO - "https://content-flashstation-pa.googleapis.com/v1/builds?product=$PRODUCT&key=$FLASH_KEY" > PIXEL_STATION_JSON || download_fail "https://flash.android.com"
 fi
-FINGERPRINT="$(grep -am1 'post-build=' PIXEL_ZIP_METADATA | cut -d= -f2)"
-SECURITY_PATCH="$(grep -am1 'security-patch-level=' PIXEL_ZIP_METADATA | cut -d= -f2)"
+busybox tac PIXEL_STATION_JSON | grep -m1 -A13 '"canary": true' > PIXEL_CANARY_JSON
+ID="$(grep 'releaseCandidateName' PIXEL_CANARY_JSON | cut -d\" -f4)"
+INCREMENTAL="$(grep 'buildId' PIXEL_CANARY_JSON | cut -d\" -f4)"
+FINGERPRINT="google/$PRODUCT/$DEVICE:CANARY/$ID/$INCREMENTAL:user/release-keys"
+download https://source.android.com/docs/security/bulletin/pixel PIXEL_SECBULL_HTML
+CANARY_ID="$(grep '"id"' PIXEL_CANARY_JSON | sed -e 's;.*canary-\(.*\)".*;\1;' -e 's;^\(.\{4\}\);\1-;')"
+SECURITY_PATCH="$(grep "<td>$CANARY_ID" PIXEL_SECBULL_HTML | sed 's;.*<td>\(.*\)</td>;\1;')"
 
 # Validate required field to prevent empty pif.prop
-if [ -z "$FINGERPRINT" ] || [ -z "$SECURITY_PATCH" ]; then
-	# link to download pixel rom metadata
-	download_fail "https://dl.google.com"
+if [ -z "$ID" ] || [ -z "$INCREMENTAL" ] || [ -z "$SECURITY_PATCH" ]; then
+	echo "! Failed to get pif.prop"
+	exit 1
 fi
 
 # Preserve previous setting

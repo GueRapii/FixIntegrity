@@ -4,20 +4,12 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
-    inputs:
-      force_update:
-        description: 'Force update'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
-  get_rom_info:
+  get_device_list:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.get_info.outputs.matrix }}
-      need_update: ${{ steps.get_info.outputs.need_update }}
-      ota_hash: ${{ steps.get_info.outputs.ota_hash }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
@@ -25,7 +17,7 @@ jobs:
         fetch-depth: 1
         ref: bot
 
-    - name: Get ROM info
+    - name: Get device list
       id: get_info
       run: |
         download() { wget -T 20 --no-check-certificate "$1" -O "$2"; }
@@ -33,37 +25,21 @@ jobs:
         mkdir -p tmp && cd tmp
         download https://developer.android.com/about/versions PIXEL_VERSIONS_HTML
         download "$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n1)" PIXEL_LATEST_HTML
-        download "https://developer.android.com$(grep -o 'href=".*download-ota.*"' PIXEL_LATEST_HTML | grep 'qpr' | cut -d\" -f2 | head -n1)" PIXEL_OTA_HTML
+        download "https://developer.android.com$(grep -o 'href=".*download.*"' PIXEL_LATEST_HTML | grep 'qpr' | cut -d\" -f2 | head -n1)" PIXEL_FI_HTML
 
         # Extract device information
-        grep -A1 'tr id=' PIXEL_OTA_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g' > MODEL_LIST
-        grep -o 'tr id="[^\"]*"' PIXEL_OTA_HTML | awk -F\" '{print $2 "_beta"}' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g' > PRODUCT_LIST
-        for i in $(cat PRODUCT_LIST); do
-          OTA_LINK=$(grep "ota/$i" PIXEL_OTA_HTML | cut -d\" -f2 || echo "")
-          echo "$OTA_LINK" >> OTA_LIST
-        done
+        grep -A1 'tr id=' PIXEL_FI_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g' > MODEL_LIST
+        grep -o 'tr id="[^\"]*"' PIXEL_FI_HTML | awk -F\" '{print $2 "_beta"}' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g' > PRODUCT_LIST
 
-        CURRENT_HASH=$(sha256sum OTA_LIST | cut -d' ' -f1)
-        LAST_HASH=$(cat ../HASH || echo '')
-
-        if [ "$CURRENT_HASH" == "$LAST_HASH" ] && [ "${{ github.event.inputs.force_update }}" != "true" ]; then
-          echo "need_update=false" >> $GITHUB_OUTPUT
-          echo "matrix={}" >> $GITHUB_OUTPUT
-          echo "ota_hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
-        else
-          echo "need_update=true" >> $GITHUB_OUTPUT
-          matrix_json=$(paste -d ',' MODEL_LIST PRODUCT_LIST OTA_LIST | jq -R 'split(",") | {model: .[0], product: .[1], ota_link: .[2]}' | jq -s '{include: [.[] | select(.ota_link != "")]}' | jq -c .)
-          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
-          echo "ota_hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
-        fi
+        matrix_json=$(paste MODEL_LIST PRODUCT_LIST | jq -R 'split("\t") | {model: .[0], product: .[1]}' | jq -s '{include: .}' | jq -c .)
+        echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
 
   process_rom:
-    needs: get_rom_info
-    if: needs.get_rom_info.outputs.need_update == 'true'
+    needs: get_device_list
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.get_rom_info.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.get_device_list.outputs.matrix) }}
 
     steps:
     - name: Checkout repository
@@ -71,16 +47,6 @@ jobs:
       with:
         fetch-depth: 1
         ref: bot
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.x'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install git+https://github.com/5ec1cff/payload-dumper
 
     - name: Process ROM
       uses: nick-invision/retry@v3
@@ -90,14 +56,26 @@ jobs:
         command: |
           model="${{ matrix.model }}"
           product="${{ matrix.product }}"
-          ota_link="${{ matrix.ota_link }}"
 
           mkdir -p tmp && cd tmp
 
-          # Get other information
-          payload_dumper --metadata --out . "$ota_link"
-          FINGERPRINT=$(grep -am1 'post-build=' metadata | cut -d= -f2)
-          SECURITY_PATCH=$(grep -am1 'security-patch-level=' metadata | cut -d= -f2)
+          # Get device fingerprint and security patch from Flash Tool and bulletins
+          DEVICE="$(echo "$product" | sed 's/_beta//')"
+          wget -T 20 --no-check-certificate https://flash.android.com -O PIXEL_FLASH_HTML
+          FLASH_KEY=$(grep -o '<body data-client-config=.*' PIXEL_FLASH_HTML | cut -d\; -f2 | cut -d\& -f1)
+          curl -H "Referer: https://flash.android.com" -s "https://content-flashstation-pa.googleapis.com/v1/builds?product=$product&key=$FLASH_KEY" > PIXEL_STATION_JSON
+          tac PIXEL_STATION_JSON | grep -m1 -A13 '"canary": true' > PIXEL_CANARY_JSON
+          ID="$(grep 'releaseCandidateName' PIXEL_CANARY_JSON | cut -d\" -f4)"
+          INCREMENTAL="$(grep 'buildId' PIXEL_CANARY_JSON | cut -d\" -f4)"
+          FINGERPRINT="google/$product/$DEVICE:CANARY/$ID/$INCREMENTAL:user/release-keys"
+          wget -T 20 --no-check-certificate https://source.android.com/docs/security/bulletin/pixel -O PIXEL_SECBULL_HTML
+          CANARY_ID="$(grep '"id"' PIXEL_CANARY_JSON | sed -e 's;.*canary-\(.*\)".*;\1;' -e 's;^\(.\{4\}\);\1-;')"
+          SECURITY_PATCH="$(grep "<td>$CANARY_ID" PIXEL_SECBULL_HTML | sed 's;.*<td>\(.*\)</td>;\1;')"
+
+          if [ -z "$ID" ] || [ -z "$INCREMENTAL" ] || [ -z "$SECURITY_PATCH" ]; then
+            echo "! Failed to get pif.prop for $product"
+            exit 1
+          fi
 
           cat <<EOF > ../${product}.prop
           FINGERPRINT=$FINGERPRINT
@@ -113,8 +91,7 @@ jobs:
         path: ${{ matrix.product }}.prop
 
   commit_and_push:
-    needs: [get_rom_info, process_rom]
-    if: needs.get_rom_info.outputs.need_update == 'true'
+    needs: [get_device_list, process_rom]
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -131,21 +108,24 @@ jobs:
       uses: actions/download-artifact@v7
       with:
         path: device_prop
-    
+
     - name: Flatten artifacts
       run: |
         find device_prop -mindepth 2 -type f -exec mv -t device_prop/ {} +
         find device_prop -type d -empty -delete
 
-    - name: Export formatted device list and new hash
+    - name: Export formatted device list
       run: |
-        echo '${{ needs.get_rom_info.outputs.matrix }}' | jq '.include | map({model, product})' > device_list.json
-        echo '${{ needs.get_rom_info.outputs.ota_hash }}' > HASH
+        echo '${{ needs.get_device_list.outputs.matrix }}' | jq '.include | map({model, product})' > device_list.json
 
     - name: Commit and Push
       run: |
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git config --global user.name "github-actions[bot]"
 
-        git add device_prop/. device_list.json HASH
-        git commit -m "update device list" && git push
+        git add device_prop/. device_list.json
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "update device list" && git push
+        fi
