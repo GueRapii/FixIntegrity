@@ -1,4 +1,4 @@
-FINGERPRINT=google/cheetah_beta/cheetah:16/CP11.251114.007/14621658:user/release-keys
+FINGERPRINT=google/cheetah_beta/cheetah:CANARY/ZP11.251121.010/14518957:user/release-keys
 MANUFACTURER=Google
 MODEL=Pixel 7 Pro
 SECURITY_PATCH=2025-12-05

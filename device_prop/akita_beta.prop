@@ -1,4 +1,4 @@
-FINGERPRINT=google/akita_beta/akita:16/CP11.251114.007/14621658:user/release-keys
+FINGERPRINT=google/akita_beta/akita:CANARY/ZP11.251121.010/14518957:user/release-keys
 MANUFACTURER=Google
 MODEL=Pixel 8a
 SECURITY_PATCH=2025-12-05
