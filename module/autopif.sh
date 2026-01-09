@@ -64,8 +64,8 @@ FI_URL="https://developer.android.com$(grep -o 'href=".*download.*"' PIXEL_LATES
 download "$FI_URL" PIXEL_FI_HTML
 
 # Extract device information
-MODEL_LIST="$(grep -A1 'tr id=' PIXEL_FI_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;')"
-PRODUCT_LIST="$(grep -o 'tr id="[^"]*"' PIXEL_FI_HTML | awk -F\" '{print $2 "_beta"}')"
+MODEL_LIST="$(grep -A1 'tr id=' PIXEL_FI_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>.*;\1;')";
+PRODUCT_LIST="$(grep 'tr id=' PIXEL_FI_HTML | sed 's;.*<tr id="\(.*\)">.*;\1_beta;')";
 
 # List available devices
 if [ "$1" = "--list" ] || [ "$1" = "-l" ]; then
@@ -97,9 +97,15 @@ CANARY_ID="$(grep '"id"' PIXEL_CANARY_JSON | sed -e 's;.*canary-\(.*\)".*;\1;' -
 SECURITY_PATCH="$(grep "<td>$CANARY_ID" PIXEL_SECBULL_HTML | sed 's;.*<td>\(.*\)</td>;\1;')"
 
 # Validate required field to prevent empty pif.prop
-if [ -z "$ID" ] || [ -z "$INCREMENTAL" ] || [ -z "$SECURITY_PATCH" ]; then
+if [ -z "$ID" ] || [ -z "$INCREMENTAL" ]; then
 	echo "! Failed to get pif.prop"
 	exit 1
+fi
+
+if [ -z "$SECURITY_PATCH" ]; then
+	echo "! Failed to determine exact security patch level"
+	echo "- Assuming probable security patch level from Canary build info"
+	SECURITY_PATCH="${CANARY_ID}-05"
 fi
 
 # Preserve previous setting
