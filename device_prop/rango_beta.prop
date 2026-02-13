@@ -1,4 +1,4 @@
-FINGERPRINT=google/rango_beta/rango:CANARY/ZP11.251212.007/14649019:user/release-keys
+FINGERPRINT=google/rango_beta/rango:CANARY/ZP11.260123.011/14822050:user/release-keys
 MANUFACTURER=Google
 MODEL=Pixel 10 Pro Fold
-SECURITY_PATCH=2026-01-05
+SECURITY_PATCH=2026-02-05
