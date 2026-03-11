@@ -6,10 +6,7 @@
 #include <fcntl.h>
 #include <vector>
 #include <cerrno>
-#include <filesystem>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <vector>
 #include "checksum.h"
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF", __VA_ARGS__)
@@ -75,16 +72,35 @@ static ssize_t xwrite(int fd, const void *buffer, size_t count_to_write) {
 }
 
 static bool copyFile(const std::string &from, const std::string &to, mode_t perms = 0777) {
-    return std::filesystem::exists(from) &&
-           std::filesystem::copy_file(
-                   from,
-                   to,
-                   std::filesystem::copy_options::overwrite_existing
-           ) &&
-           !chmod(
-                   to.c_str(),
-                   perms
-           );
+    int src = open(from.c_str(), O_RDONLY);
+    if (src < 0) return false;
+
+    int dst = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC, perms);
+    if (dst < 0) {
+        close(src);
+        return false;
+    }
+
+    char buffer[4096];
+    ssize_t n;
+    bool ok = true;
+    while ((n = xread(src, buffer, sizeof(buffer))) > 0) {
+        if (xwrite(dst, buffer, n) != n) {
+            ok = false;
+            break;
+        }
+    }
+
+    if (n < 0) ok = false;
+
+    close(src);
+    close(dst);
+
+    if (ok) {
+        chmod(to.c_str(), perms);
+    }
+
+    return ok;
 }
 
 static uint32_t crc32(const uint8_t *data, size_t len) {
@@ -132,13 +148,11 @@ static bool verifyModule(const char *path, const char *expected_hex) {
     std::vector<std::string> lines;
     std::string file_str(buf.begin(), buf.end());
     size_t pos = 0;
-    bool found = false;
     while (pos < file_str.size()) {
         size_t next = file_str.find('\n', pos);
         std::string line = file_str.substr(pos, next - pos + 1);
         if (line.rfind("description=", 0) == 0) {
             line = "description=❌ This module has been tampered, please install from official source.\n";
-            found = true;
         }
         lines.push_back(line);
         if (next == std::string::npos) break;

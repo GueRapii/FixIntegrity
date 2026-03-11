@@ -49,7 +49,7 @@ jobs:
         ref: bot
 
     - name: Process ROM
-      uses: nick-invision/retry@v3
+      uses: nick-invision/retry@v4
       with:
         timeout_minutes: 10
         max_attempts: 3
@@ -91,7 +91,7 @@ jobs:
           EOF
 
     - name: Upload digest artifact
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.product }}
         path: ${{ matrix.product }}.prop
@@ -111,7 +111,7 @@ jobs:
         rm -rf device_prop/*
 
     - name: Download all device prop
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         path: device_prop
 

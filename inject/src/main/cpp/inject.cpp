@@ -10,8 +10,6 @@
 
 static std::string dir;
 static JNIEnv *env;
-static bool isGmsUnstable = false;
-static bool isVending = false;
 
 static std::unordered_map<std::string, std::string> propMap;
 
@@ -352,9 +350,6 @@ static void injectDex() {
 
 extern "C" [[gnu::visibility("default"), maybe_unused]] bool
 init(JavaVM *vm, const std::string &gmsDir, bool isGmsUnstable, bool isVending) {
-    ::isGmsUnstable = isGmsUnstable;
-    ::isVending = isVending;
-
     if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
         LOGE("[INJECT] JNI_ERR!");
         return true;
