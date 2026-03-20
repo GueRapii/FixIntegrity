@@ -1,4 +1,4 @@
-FINGERPRINT=google/blazer_beta/blazer:CANARY/ZP11.260123.011/14822050:user/release-keys
+FINGERPRINT=google/blazer_beta/blazer:CANARY/ZP11.260220.007/14993212:user/release-keys
 MANUFACTURER=Google
 MODEL=Pixel 10 Pro
-SECURITY_PATCH=2026-02-05
+SECURITY_PATCH=2026-03-05
