@@ -1,7 +1,6 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.android.library) apply false
 }
 
 tasks.register("copyZygiskFiles") {
@@ -17,6 +16,7 @@ tasks.register("copyZygiskFiles") {
 
     doLast {
         classesJar.get().asFile.copyTo(moduleFolder.resolve("classes.dex"), overwrite = true)
+        moduleFolder.resolve("inject").deleteRecursively()
         zygiskSoDir.get().asFile.walk()
             .filter { it.isFile && it.name == "libzygisk.so" }
             .forEach { soFile ->
@@ -27,28 +27,8 @@ tasks.register("copyZygiskFiles") {
     }
 }
 
-tasks.register("copyInjectFiles") {
-    val moduleFolder = project.rootDir.resolve("module")
-    val injectModule = project.project(":inject")
-    val injectBuildDir = injectModule.layout.buildDirectory
-    val injectSoDir = injectBuildDir.file("intermediates/stripped_native_libs/release/stripReleaseDebugSymbols/out/lib")
-
-    inputs.dir(injectSoDir)
-    outputs.dir(moduleFolder)
-
-    doLast {
-        injectSoDir.get().asFile.walk()
-            .filter { it.isFile && it.name == "libinject.so" }
-            .forEach { soFile ->
-                val abiFolder = soFile.parentFile.name
-                val destination = moduleFolder.resolve("inject/$abiFolder.so")
-                soFile.copyTo(destination, overwrite = true)
-            }
-    }
-}
-
 tasks.register<Zip>("zip") {
-    dependsOn("copyZygiskFiles", "copyInjectFiles")
+    dependsOn("copyZygiskFiles")
 
     archiveFileName.set("PlayIntegrityFix.zip")
     destinationDirectory.set(project.rootDir.resolve("out"))

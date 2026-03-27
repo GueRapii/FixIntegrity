@@ -86,3 +86,13 @@ fi
 # give exec perm to autopif.sh
 chmod +x "$MODPATH/autopif.sh"
 chmod +x "$MODPATH/autopif_ota.sh"
+
+# Clean up
+for pkg in com.google.android.gms com.android.vending; do
+    for dir in "/data/user_de/0/$pkg" "/data/data/$pkg"; do
+        [ -d "$dir" ] || continue
+        for artifact in libinject.so classes.dex pif.prop; do
+            [ -f "$dir/$artifact" ] && rm -f "$dir/$artifact"
+        done
+    done
+done

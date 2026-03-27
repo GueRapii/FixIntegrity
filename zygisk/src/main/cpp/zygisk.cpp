@@ -1,21 +1,25 @@
 #include "zygisk.hpp"
+#include "checksum.h"
+#include "Dobby/include/dobby.h"
+#include "pif_config.hpp"
+
+#include <algorithm>
 #include <android/log.h>
+#include <jni.h>
 #include <string>
-#include <dlfcn.h>
+#include <string_view>
+#include <sys/socket.h>
+#include <sys/system_properties.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <vector>
-#include <cerrno>
-#include <sys/stat.h>
-#include "checksum.h"
+#include <cstdio>
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF", __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "PIF", __VA_ARGS__)
 
 #define DEX_PATH "/data/adb/modules/playintegrityfix/classes.dex"
-
-#define LIB_64 "/data/adb/modules/playintegrityfix/inject/arm64-v8a.so"
-#define LIB_32 "/data/adb/modules/playintegrityfix/inject/armeabi-v7a.so"
-
 #define MODULE_PROP "/data/adb/modules/playintegrityfix/module.prop"
 #define DEFAULT_PIF "/data/adb/modules/playintegrityfix/pif.prop"
 #define CUSTOM_PIF "/data/adb/pif.prop"
@@ -23,108 +27,150 @@
 #define VENDING_PACKAGE "com.android.vending"
 #define DROIDGUARD_PACKAGE "com.google.android.gms.unstable"
 
-static ssize_t xread(int fd, void *buffer, size_t count_to_read) {
-    ssize_t total_read = 0;
-    char *current_buf = static_cast<char *>(buffer);
-    size_t remaining_bytes = count_to_read;
+namespace {
 
-    while (remaining_bytes > 0) {
-        ssize_t ret = TEMP_FAILURE_RETRY(read(fd, current_buf, remaining_bytes));
+constexpr uint8_t COMMAND_LOAD_PAYLOAD = 1;
+constexpr int PAYLOAD_TIMEOUT_MS = 5000;
 
+JNIEnv *gEnv = nullptr;
+pif::Config gConfig;
+std::vector<uint8_t> gDexBytes;
+
+using T_Callback = void (*)(void *, const char *, const char *, uint32_t);
+
+T_Callback o_callback = nullptr;
+void (*o_system_property_read_callback)(prop_info *, T_Callback, void *) = nullptr;
+
+ssize_t xread(int fd, void *buffer, size_t countToRead) {
+    ssize_t totalRead = 0;
+    char *currentBuf = static_cast<char *>(buffer);
+    size_t remainingBytes = countToRead;
+
+    while (remainingBytes > 0) {
+        const ssize_t ret = TEMP_FAILURE_RETRY(read(fd, currentBuf, remainingBytes));
         if (ret < 0) {
             return -1;
         }
-
         if (ret == 0) {
             break;
         }
 
-        current_buf += ret;
-        total_read += ret;
-        remaining_bytes -= ret;
+        currentBuf += ret;
+        totalRead += ret;
+        remainingBytes -= ret;
     }
 
-    return total_read;
+    return totalRead;
 }
 
-static ssize_t xwrite(int fd, const void *buffer, size_t count_to_write) {
-    ssize_t total_written = 0;
-    const char *current_buf = static_cast<const char *>(buffer);
-    size_t remaining_bytes = count_to_write;
+ssize_t xwrite(int fd, const void *buffer, size_t countToWrite) {
+    ssize_t totalWritten = 0;
+    const char *currentBuf = static_cast<const char *>(buffer);
+    size_t remainingBytes = countToWrite;
 
-    while (remaining_bytes > 0) {
-        ssize_t ret = TEMP_FAILURE_RETRY(write(fd, current_buf, remaining_bytes));
-
+    while (remainingBytes > 0) {
+        const ssize_t ret = TEMP_FAILURE_RETRY(write(fd, currentBuf, remainingBytes));
         if (ret < 0) {
             return -1;
         }
-
         if (ret == 0) {
             break;
         }
 
-        current_buf += ret;
-        total_written += ret;
-        remaining_bytes -= ret;
+        currentBuf += ret;
+        totalWritten += ret;
+        remainingBytes -= ret;
     }
 
-    return total_written;
+    return totalWritten;
 }
 
-static bool copyFile(const std::string &from, const std::string &to, mode_t perms = 0777) {
-    int src = open(from.c_str(), O_RDONLY);
-    if (src < 0) return false;
+bool readExact(int fd, void *buffer, size_t size) {
+    return xread(fd, buffer, size) == static_cast<ssize_t>(size);
+}
 
-    int dst = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC, perms);
-    if (dst < 0) {
-        close(src);
+bool writeExact(int fd, const void *buffer, size_t size) {
+    return xwrite(fd, buffer, size) == static_cast<ssize_t>(size);
+}
+
+void applySocketTimeout(int fd) {
+    const timeval timeout{
+            .tv_sec = PAYLOAD_TIMEOUT_MS / 1000,
+            .tv_usec = static_cast<suseconds_t>((PAYLOAD_TIMEOUT_MS % 1000) * 1000),
+    };
+
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+}
+
+bool readFileBytes(const char *path, std::vector<uint8_t> &out) {
+    out.clear();
+
+    const int file = open(path, O_RDONLY | O_CLOEXEC);
+    if (file < 0) {
         return false;
     }
 
-    char buffer[4096];
-    ssize_t n;
-    bool ok = true;
-    while ((n = xread(src, buffer, sizeof(buffer))) > 0) {
-        if (xwrite(dst, buffer, n) != n) {
-            ok = false;
-            break;
-        }
+    std::vector<uint8_t> buffer(4096);
+    ssize_t bytes = 0;
+    while ((bytes = TEMP_FAILURE_RETRY(read(file, buffer.data(), buffer.size()))) > 0) {
+        out.insert(out.end(), buffer.begin(), buffer.begin() + bytes);
     }
 
-    if (n < 0) ok = false;
-
-    close(src);
-    close(dst);
-
-    if (ok) {
-        chmod(to.c_str(), perms);
-    }
-
-    return ok;
+    close(file);
+    return bytes == 0 && !out.empty();
 }
 
-static uint32_t crc32(const uint8_t *data, size_t len) {
+bool loadPropBytes(std::vector<uint8_t> &out) {
+    if (readFileBytes(CUSTOM_PIF, out)) {
+        return true;
+    }
+    return readFileBytes(DEFAULT_PIF, out);
+}
+
+bool writeVector(int fd, const std::vector<uint8_t> &buffer) {
+    const uint32_t size = static_cast<uint32_t>(buffer.size());
+    if (!writeExact(fd, &size, sizeof(size))) {
+        return false;
+    }
+    return size == 0 || writeExact(fd, buffer.data(), size);
+}
+
+bool readVector(int fd, std::vector<uint8_t> &buffer) {
+    uint32_t size = 0;
+    if (!readExact(fd, &size, sizeof(size))) {
+        return false;
+    }
+
+    buffer.resize(size);
+    return size == 0 || readExact(fd, buffer.data(), size);
+}
+
+uint32_t crc32(const uint8_t *data, size_t len) {
     uint32_t crc = 0xFFFFFFFF;
     for (size_t i = 0; i < len; ++i) {
         crc ^= data[i];
-        for (int j = 0; j < 8; ++j)
+        for (int j = 0; j < 8; ++j) {
             crc = (crc >> 1) ^ (0xEDB88320U & (-(crc & 1)));
+        }
     }
     return ~crc;
 }
 
-static bool verifyModule(const char *path, const char *expected_hex) {
-    bool update = (access("/data/adb/modules/playintegrityfix/update", F_OK) == 0);
-    if (update)
+bool verifyModule(const char *path, const char *expectedHex) {
+    const bool update = access("/data/adb/modules/playintegrityfix/update", F_OK) == 0;
+    if (update) {
         return true;
+    }
 
-    int fd = open(path, O_RDWR);
-    if (fd < 0)
+    const int fd = open(path, O_RDWR);
+    if (fd < 0) {
         return false;
+    }
 
     std::vector<uint8_t> buf;
     uint8_t tmp[512];
-    ssize_t n;
+    ssize_t n = 0;
     while ((n = read(fd, tmp, sizeof(tmp))) > 0) {
         buf.insert(buf.end(), tmp, tmp + n);
     }
@@ -133,11 +179,11 @@ static bool verifyModule(const char *path, const char *expected_hex) {
         return false;
     }
 
-    uint32_t crc = crc32(buf.data(), buf.size());
-    uint32_t expected_crc = 0;
-    sscanf(expected_hex, "%x", &expected_crc);
+    const uint32_t crc = crc32(buf.data(), buf.size());
+    uint32_t expectedCrc = 0;
+    sscanf(expectedHex, "%x", &expectedCrc);
 
-    if (crc == expected_crc) {
+    if (crc == expectedCrc) {
         close(fd);
         return true;
     }
@@ -146,16 +192,18 @@ static bool verifyModule(const char *path, const char *expected_hex) {
 
     lseek(fd, 0, SEEK_SET);
     std::vector<std::string> lines;
-    std::string file_str(buf.begin(), buf.end());
+    const std::string fileStr(buf.begin(), buf.end());
     size_t pos = 0;
-    while (pos < file_str.size()) {
-        size_t next = file_str.find('\n', pos);
-        std::string line = file_str.substr(pos, next - pos + 1);
+    while (pos < fileStr.size()) {
+        const size_t next = fileStr.find('\n', pos);
+        std::string line = fileStr.substr(pos, next - pos + 1);
         if (line.rfind("description=", 0) == 0) {
             line = "description=❌ This module has been tampered, please install from official source.\n";
         }
         lines.push_back(line);
-        if (next == std::string::npos) break;
+        if (next == std::string::npos) {
+            break;
+        }
         pos = next + 1;
     }
 
@@ -163,59 +211,291 @@ static bool verifyModule(const char *path, const char *expected_hex) {
         close(fd);
         return false;
     }
+
     lseek(fd, 0, SEEK_SET);
     for (const auto &line : lines) {
-        if (write(fd, line.c_str(), line.size()) != (ssize_t)line.size()) {
+        if (write(fd, line.c_str(), line.size()) != static_cast<ssize_t>(line.size())) {
             close(fd);
             return false;
         }
     }
+
     close(fd);
     return false;
 }
 
-static void companion(int fd) {
-    bool ok = true;
+std::string propMapToJson() {
+    std::string json = "{";
+    bool first = true;
+    for (const auto &[key, value] : gConfig.propMap) {
+        if (!first) {
+            json += ",";
+        }
+        first = false;
+        json += "\"" + key + "\":\"" + value + "\"";
+    }
+    json += "}";
+    return json;
+}
 
-    int size = 0;
-    xread(fd, &size, sizeof(int));
+void modifyCallback(void *cookie, const char *name, const char *value, uint32_t serial) {
+    if (!cookie || !name || !value || !o_callback) {
+        return;
+    }
 
-    std::string dir;
-    dir.resize(size);
-    auto bytes = xread(fd, dir.data(), size);
-    dir.resize(bytes);
-    dir.shrink_to_fit();
+    const char *oldValue = value;
+    const std::string_view prop(name);
 
-    LOGD("[COMPANION] GMS dir: %s", dir.c_str());
-
-    auto libFile = dir + "/libinject.so";
-#if defined(__aarch64__)
-    ok &= copyFile(LIB_64, libFile);
-#elif defined(__arm__)
-    ok &= copyFile(LIB_32, libFile);
-#endif
-
-    LOGD("[COMPANION] copied inject lib");
-
-    auto dexFile = dir + "/classes.dex";
-    ok &= copyFile(DEX_PATH, dexFile, 0644);
-
-    LOGD("[COMPANION] copied dex");
-
-    auto pifFile = dir + "/pif.prop";
-    if (!copyFile(CUSTOM_PIF, pifFile)) {
-        if (!copyFile(DEFAULT_PIF, pifFile)) {
-            ok = false;
+    if (prop == "init.svc.adbd") {
+        value = "stopped";
+    } else if (prop == "sys.usb.state") {
+        value = "mtp";
+    } else if (prop.ends_with("api_level")) {
+        if (!gConfig.deviceInitialSdkInt.empty()) {
+            value = gConfig.deviceInitialSdkInt.c_str();
+        }
+    } else if (prop.ends_with(".security_patch")) {
+        if (!gConfig.securityPatch.empty()) {
+            value = gConfig.securityPatch.c_str();
+        }
+    } else if (prop.ends_with(".build.id")) {
+        if (!gConfig.buildId.empty()) {
+            value = gConfig.buildId.c_str();
         }
     }
 
-    LOGD("[COMPANION] copied pif");
+    if (strcmp(oldValue, value) == 0) {
+        if (gConfig.debug) {
+            LOGD("[%s]: %s (unchanged)", name, oldValue);
+        }
+    } else {
+        LOGD("[%s]: %s -> %s", name, oldValue, value);
+    }
 
-    ok &= verifyModule(MODULE_PROP, MODULE_PROP_CHECKSUM_HEX);
+    o_callback(cookie, name, value, serial);
+}
 
-    LOGD("[COMPANION] verified module.prop");
+void systemPropertyReadCallback(prop_info *pi, T_Callback callback, void *cookie) {
+    if (pi && callback && cookie) {
+        o_callback = callback;
+    }
+    o_system_property_read_callback(pi, modifyCallback, cookie);
+}
 
-    xwrite(fd, &ok, sizeof(bool));
+bool doHook() {
+    void *ptr = DobbySymbolResolver(nullptr, "__system_property_read_callback");
+    if (ptr && DobbyHook(ptr, reinterpret_cast<void *>(systemPropertyReadCallback),
+                         reinterpret_cast<void **>(&o_system_property_read_callback)) == 0) {
+        LOGD("hook __system_property_read_callback successful at %p", ptr);
+        return true;
+    }
+
+    LOGE("hook __system_property_read_callback failed!");
+    return false;
+}
+
+void doSpoofVending() {
+    constexpr int requestSdk = 32;
+
+    jclass buildVersionClass = gEnv->FindClass("android/os/Build$VERSION");
+    if (buildVersionClass == nullptr) {
+        LOGE("Build.VERSION class not found");
+        gEnv->ExceptionClear();
+        return;
+    }
+
+    jfieldID sdkIntFieldId = gEnv->GetStaticFieldID(buildVersionClass, "SDK_INT", "I");
+    if (sdkIntFieldId == nullptr) {
+        LOGE("SDK_INT field not found");
+        gEnv->ExceptionClear();
+        gEnv->DeleteLocalRef(buildVersionClass);
+        return;
+    }
+
+    const int oldValue = gEnv->GetStaticIntField(buildVersionClass, sdkIntFieldId);
+    const int targetSdk = std::min(oldValue, requestSdk);
+    if (oldValue == targetSdk) {
+        gEnv->DeleteLocalRef(buildVersionClass);
+        return;
+    }
+
+    gEnv->SetStaticIntField(buildVersionClass, sdkIntFieldId, targetSdk);
+    if (gEnv->ExceptionCheck()) {
+        gEnv->ExceptionDescribe();
+        gEnv->ExceptionClear();
+        LOGE("SDK_INT field not accessible (JNI Exception)");
+    } else {
+        LOGD("[SDK_INT]: %d -> %d", oldValue, targetSdk);
+    }
+
+    gEnv->DeleteLocalRef(buildVersionClass);
+}
+
+void updateBuildFields() {
+    jclass buildClass = gEnv->FindClass("android/os/Build");
+    jclass versionClass = gEnv->FindClass("android/os/Build$VERSION");
+    if (buildClass == nullptr || versionClass == nullptr) {
+        gEnv->ExceptionClear();
+        return;
+    }
+
+    for (const auto &[key, value] : gConfig.propMap) {
+        jclass targetClass = buildClass;
+        jfieldID fieldId = gEnv->GetStaticFieldID(buildClass, key.c_str(), "Ljava/lang/String;");
+        if (gEnv->ExceptionCheck()) {
+            gEnv->ExceptionClear();
+            fieldId = gEnv->GetStaticFieldID(versionClass, key.c_str(), "Ljava/lang/String;");
+            targetClass = versionClass;
+            if (gEnv->ExceptionCheck()) {
+                gEnv->ExceptionClear();
+                continue;
+            }
+        }
+
+        jstring jValue = gEnv->NewStringUTF(value.c_str());
+        gEnv->SetStaticObjectField(targetClass, fieldId, jValue);
+        if (gEnv->ExceptionCheck()) {
+            gEnv->ExceptionClear();
+            gEnv->DeleteLocalRef(jValue);
+            continue;
+        }
+
+        LOGD("Set '%s' to '%s'", key.c_str(), value.c_str());
+        gEnv->DeleteLocalRef(jValue);
+    }
+
+    gEnv->DeleteLocalRef(versionClass);
+    gEnv->DeleteLocalRef(buildClass);
+}
+
+void injectDex() {
+    if (gDexBytes.empty()) {
+        LOGD("[INJECT] No dex payload available");
+        return;
+    }
+
+    jclass classLoaderClass = gEnv->FindClass("java/lang/ClassLoader");
+    jmethodID getSystemClassLoader = gEnv->GetStaticMethodID(
+            classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
+    jobject systemClassLoader = gEnv->CallStaticObjectMethod(classLoaderClass, getSystemClassLoader);
+    if (gEnv->ExceptionCheck()) {
+        gEnv->ExceptionDescribe();
+        gEnv->ExceptionClear();
+        return;
+    }
+
+    jobject dexBuffer = gEnv->NewDirectByteBuffer(gDexBytes.data(), static_cast<jlong>(gDexBytes.size()));
+    jclass inMemoryClassLoaderClass = gEnv->FindClass("dalvik/system/InMemoryDexClassLoader");
+    jmethodID inMemoryClassLoaderInit = gEnv->GetMethodID(
+            inMemoryClassLoaderClass, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
+    jobject dexClassLoader = gEnv->NewObject(
+            inMemoryClassLoaderClass, inMemoryClassLoaderInit, dexBuffer, systemClassLoader);
+    if (gEnv->ExceptionCheck()) {
+        gEnv->ExceptionDescribe();
+        gEnv->ExceptionClear();
+        return;
+    }
+
+    jmethodID loadClass = gEnv->GetMethodID(
+            classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    jstring entryClassName = gEnv->NewStringUTF("es.chiteroman.playintegrityfix.EntryPoint");
+    jobject entryClassObject = gEnv->CallObjectMethod(dexClassLoader, loadClass, entryClassName);
+    if (gEnv->ExceptionCheck()) {
+        gEnv->ExceptionDescribe();
+        gEnv->ExceptionClear();
+        return;
+    }
+
+    jclass entryPointClass = static_cast<jclass>(entryClassObject);
+    jmethodID entryInit = gEnv->GetStaticMethodID(entryPointClass, "init", "(Ljava/lang/String;ZZZ)V");
+    const std::string json = propMapToJson();
+    jstring jsonString = gEnv->NewStringUTF(json.c_str());
+    gEnv->CallStaticVoidMethod(entryPointClass, entryInit, jsonString, gConfig.spoofProvider,
+                               gConfig.spoofSignature, gConfig.spoofBuild);
+    if (gEnv->ExceptionCheck()) {
+        gEnv->ExceptionDescribe();
+        gEnv->ExceptionClear();
+    }
+
+    gEnv->DeleteLocalRef(jsonString);
+    gEnv->DeleteLocalRef(entryClassObject);
+    gEnv->DeleteLocalRef(entryClassName);
+    gEnv->DeleteLocalRef(dexClassLoader);
+    gEnv->DeleteLocalRef(inMemoryClassLoaderClass);
+    gEnv->DeleteLocalRef(dexBuffer);
+    gEnv->DeleteLocalRef(systemClassLoader);
+    gEnv->DeleteLocalRef(classLoaderClass);
+}
+
+bool requestPayload(int fd) {
+    if (fd < 0) {
+        return false;
+    }
+
+    applySocketTimeout(fd);
+
+    bool ok = writeExact(fd, &COMMAND_LOAD_PAYLOAD, sizeof(COMMAND_LOAD_PAYLOAD));
+    bool companionOk = false;
+    ok = ok && readExact(fd, &companionOk, sizeof(companionOk));
+    if (!ok || !companionOk) {
+        close(fd);
+        return false;
+    }
+
+    ok = readConfig(fd, gConfig);
+    if (ok && gConfig.needsDex()) {
+        ok = readVector(fd, gDexBytes);
+    } else {
+        gDexBytes.clear();
+    }
+
+    close(fd);
+    if (!ok) {
+        gDexBytes.clear();
+        gConfig = {};
+        return false;
+    }
+    return true;
+}
+
+void companion(int fd) {
+    applySocketTimeout(fd);
+
+    bool ok = verifyModule(MODULE_PROP, MODULE_PROP_CHECKSUM_HEX);
+    uint8_t command = 0;
+    ok = ok && readExact(fd, &command, sizeof(command));
+    ok = ok && command == COMMAND_LOAD_PAYLOAD;
+
+    std::vector<uint8_t> propBytes;
+    std::vector<uint8_t> dexBytes;
+    pif::Config config;
+
+    if (ok) {
+        ok = loadPropBytes(propBytes);
+    }
+    if (ok) {
+        const std::string_view propView(reinterpret_cast<const char *>(propBytes.data()), propBytes.size());
+        config = pif::parseConfig(propView);
+    }
+    if (ok && config.needsDex()) {
+        ok = readFileBytes(DEX_PATH, dexBytes);
+    }
+
+    writeExact(fd, &ok, sizeof(ok));
+    if (!ok) {
+        return;
+    }
+
+    ok = writeConfig(fd, config);
+    if (ok && config.needsDex()) {
+        ok = writeVector(fd, dexBytes);
+    }
+
+    if (!ok) {
+        LOGE("[COMPANION] failed to send payload");
+    }
+}
+
 }
 
 using namespace zygisk;
@@ -223,90 +503,92 @@ using namespace zygisk;
 class PlayIntegrityFix : public ModuleBase {
 public:
     void onLoad(Api *api_, JNIEnv *env_) override {
-        this->api = api_;
-        this->env = env_;
+        api = api_;
+        env = env_;
     }
 
     void preAppSpecialize(AppSpecializeArgs *args) override {
-        api->setOption(DLCLOSE_MODULE_LIBRARY);
+        payloadLoaded = false;
+        isGmsUnstable = false;
+        isVending = false;
+        gConfig = {};
+        gDexBytes.clear();
 
-        if (!args)
+        if (!args) {
+            api->setOption(DLCLOSE_MODULE_LIBRARY);
             return;
+        }
 
-        bool scriptOnly = (access("/data/adb/pif_script_only", F_OK) == 0);
-
-        if (scriptOnly)
+        if (access("/data/adb/pif_script_only", F_OK) == 0) {
+            api->setOption(DLCLOSE_MODULE_LIBRARY);
             return;
+        }
 
-        std::string dir, name;
+        std::string dir;
+        std::string name;
 
-        auto rawDir = env->GetStringUTFChars(args->app_data_dir, nullptr);
-
+        const char *rawDir = env->GetStringUTFChars(args->app_data_dir, nullptr);
         if (rawDir) {
             dir = rawDir;
             env->ReleaseStringUTFChars(args->app_data_dir, rawDir);
         }
 
-        auto rawName = env->GetStringUTFChars(args->nice_name, nullptr);
-
+        const char *rawName = env->GetStringUTFChars(args->nice_name, nullptr);
         if (rawName) {
             name = rawName;
             env->ReleaseStringUTFChars(args->nice_name, rawName);
         }
 
-        std::string_view vDir(dir);
-        bool isGms =
-                vDir.ends_with("/com.google.android.gms") || vDir.ends_with("/com.android.vending");
-
-        if (!isGms)
+        const std::string_view appDir(dir);
+        const bool isGms = appDir.ends_with("/com.google.android.gms") || appDir.ends_with("/com.android.vending");
+        if (!isGms) {
+            api->setOption(DLCLOSE_MODULE_LIBRARY);
             return;
+        }
 
         api->setOption(FORCE_DENYLIST_UNMOUNT);
 
-        std::string_view vName(name);
-        isGmsUnstable = vName == DROIDGUARD_PACKAGE;
-        isVending = vName == VENDING_PACKAGE;
-
+        const std::string_view niceName(name);
+        isGmsUnstable = niceName == DROIDGUARD_PACKAGE;
+        isVending = niceName == VENDING_PACKAGE;
         if (!isGmsUnstable && !isVending) {
             api->setOption(DLCLOSE_MODULE_LIBRARY);
             return;
         }
 
-        auto fd = api->connectCompanion();
-
-        int size = static_cast<int>(dir.size());
-        xwrite(fd, &size, sizeof(int));
-
-        xwrite(fd, dir.data(), size);
-
-        bool ok = false;
-        xread(fd, &ok, sizeof(bool));
-
-        close(fd);
-
-        if (ok)
-            gmsDir = dir;
+        payloadLoaded = requestPayload(api->connectCompanion());
+        if (!payloadLoaded) {
+            api->setOption(DLCLOSE_MODULE_LIBRARY);
+        }
     }
 
     void postAppSpecialize(const AppSpecializeArgs *args) override {
-        if (gmsDir.empty())
+        if (!payloadLoaded) {
             return;
+        }
 
-        typedef bool (*InitFuncPtr)(JavaVM *, const std::string &, bool, bool);
+        gEnv = env;
 
-        void *handle = dlopen((gmsDir + "/libinject.so").c_str(), RTLD_NOW);
+        if (isGmsUnstable) {
+            if (gConfig.spoofBuild) {
+                updateBuildFields();
+            }
 
-        if (!handle)
-            return;
+            if (gConfig.needsDex()) {
+                injectDex();
+            } else {
+                LOGD("[INJECT] Dex payload skipped because spoofProvider and spoofSignature are false");
+            }
 
-        auto init_func = reinterpret_cast<InitFuncPtr>(dlsym(handle, "init"));
-
-        JavaVM *vm = nullptr;
-        env->GetJavaVM(&vm);
-
-        if (init_func(vm, gmsDir, isGmsUnstable, isVending)) {
-            LOGD("dlclose injected lib");
-            dlclose(handle);
+            if (gConfig.spoofProps) {
+                doHook();
+            }
+        } else if (isVending) {
+            if (gConfig.spoofVendingBuild) {
+                updateBuildFields();
+            } else if (gConfig.spoofVendingSdk) {
+                doSpoofVending();
+            }
         }
     }
 
@@ -317,11 +599,10 @@ public:
 private:
     Api *api = nullptr;
     JNIEnv *env = nullptr;
-    std::string gmsDir;
+    bool payloadLoaded = false;
     bool isGmsUnstable = false;
     bool isVending = false;
 };
 
 REGISTER_ZYGISK_MODULE(PlayIntegrityFix)
-
 REGISTER_ZYGISK_COMPANION(companion)

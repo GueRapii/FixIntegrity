@@ -24,4 +24,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "PlayIntegrityFix"
 include(":zygisk")
-include(":inject")
