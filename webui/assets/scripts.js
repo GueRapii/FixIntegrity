@@ -101,7 +101,7 @@ function applyButtonEventListeners() {
     }
 
     securityPatchBtn.onclick = async () => {
-        await exec(`sh ${moddir}/security_patch.sh --${securityPatchBtn.selected ? 'enable' : 'disable'}`);
+        await exec(`sh ${moddir}/security_patch.sh --${securityPatchBtn.selected ? 'enable' : 'disable'}`, { env: { PATH: "/data/adb/magisk:/data/adb/ksu/bin:/data/adb/ap/bin:$PATH" }});
         await loadAutoSecurityPatchConfig();
         appendToOutput(`[+] ${securityPatchBtn.selected ? translations.output_enabled : translations.output_disabled} auto security patch.`);
     }

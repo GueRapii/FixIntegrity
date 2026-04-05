@@ -67,3 +67,9 @@ cat << EOF > $MODDIR/system.prop
 ro.build.version.security_patch=$SECURITY_PATCH
 ro.vendor.build.security_patch=$SECURITY_PATCH
 EOF
+
+if resetprop --help | grep "compact" > /dev/null; then
+    resetprop -n ro.build.version.security_patch "$SECURITY_PATCH"
+    resetprop -n ro.vendor.build.security_patch "$SECURITY_PATCH"
+    resetprop -c
+fi
