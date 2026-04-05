@@ -49,10 +49,9 @@ resetprop_if_diff ro.force.debuggable 0
 resetprop_if_diff ro.secure 1
 
 # Work around custom ROM PropImitationHooks conflict when their persist props don't exist
-if [ -n "$(resetprop ro.aospa.version)" -o -n "$(resetprop net.pixelos.version)" -o -n "$(resetprop ro.afterlife.version)" -o -f /data/system/gms_certified_props.json ]; then
-    for PROP in persist.sys.pihooks.first_api_level persist.sys.pihooks.security_patch; do
-        resetprop | grep -q "\[$PROP\]" || resetprop -n -p "$PROP" ""
-    done
+if resetprop | grep -qE "ro.aospa.version|net.pixelos.version|ro.afterlife.version" || [ -f /data/system/gms_certified_props.json ]; then
+    resetprop_if_diff persist.sys.pihooks.first_api_level ""
+    resetprop_if_diff persist.sys.pihooks.security_patch ""
 fi
 
 # Work around supported custom ROM PropImitationHooks/PixelPropsUtils (and hybrids) conflict when spoofProvider is disabled
@@ -64,6 +63,8 @@ if resetprop | grep -qE "persist.sys.pihooks|persist.sys.entryhooks|persist.sys.
     resetprop -n -p persist.sys.pixelprops.gapps false
     resetprop -n -p persist.sys.pixelprops.google false
     resetprop -n -p persist.sys.pixelprops.pi false
+    resetprop -n -p persist.sys.pp.gms false
+    resetprop -n -p persist.sys.pp.vending false
 fi
 
 # LeafOS "gmscompat: Dynamically spoof props for GMS"
