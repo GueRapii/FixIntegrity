@@ -13,15 +13,13 @@ if [ "$API" -lt 26 ]; then
 fi
 
 check_zygisk() {
-    local ZYGISK_MODULE="/data/adb/modules/zygisksu"
-    local REZYGISK_MODULE="/data/adb/modules/rezygisk"
     local MAGISK_DIR="/data/adb/magisk"
     local ZYGISK_MSG="Zygisk is not enabled. Please either:
     - Enable Zygisk in Magisk settings
     - Install ZygiskNext or ReZygisk module"
 
-    # Check if Zygisk module directory exists
-    if [ -d "$ZYGISK_MODULE" ] || [ -d "$REZYGISK_MODULE" ]; then
+    # Check if Zygisk module exists
+    if find /data/adb/modules /data/adb/modules_update -name "libzygisk.so" | grep -q .; then
         return 0
     fi
 
