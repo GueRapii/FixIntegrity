@@ -5,3 +5,5 @@ versionCode=1
 author=@GueRapii on telegram [t.me/randommodules]
 description=A smart module to easily install, restore, and auto-update your Tricky Store Keybox 📦📦.
 zygisk=yes
+banner=banner.jpg
+updateJson=https://raw.githubusercontent.com/GueRapii/FixIntegrity/refs/heads/inject_s/update.json
