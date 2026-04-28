@@ -19,9 +19,9 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF", __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "PIF", __VA_ARGS__)
 
-#define DEX_PATH "/data/adb/modules/playintegrityfix/classes.dex"
-#define MODULE_PROP "/data/adb/modules/playintegrityfix/module.prop"
-#define DEFAULT_PIF "/data/adb/modules/playintegrityfix/pif.prop"
+#define DEX_PATH "/data/adb/modules/fixintegrity/classes.dex"
+#define MODULE_PROP "/data/adb/modules/fixintegrity/module.prop"
+#define DEFAULT_PIF "/data/adb/modules/fixintegrity/pif.prop"
 #define CUSTOM_PIF "/data/adb/pif.prop"
 
 #define VENDING_PACKAGE "com.android.vending"
@@ -29,472 +29,412 @@
 
 namespace {
 
-constexpr uint8_t COMMAND_LOAD_PAYLOAD = 1;
-constexpr int PAYLOAD_TIMEOUT_MS = 5000;
+    constexpr uint8_t COMMAND_LOAD_PAYLOAD = 1;
+    constexpr int PAYLOAD_TIMEOUT_MS = 5000;
 
-JNIEnv *gEnv = nullptr;
-pif::Config gConfig;
-std::vector<uint8_t> gDexBytes;
+    JNIEnv *gEnv = nullptr;
+    pif::Config gConfig;
+    std::vector<uint8_t> gDexBytes;
 
-using T_Callback = void (*)(void *, const char *, const char *, uint32_t);
+    using T_Callback = void (*)(void *, const char *, const char *, uint32_t);
 
-T_Callback o_callback = nullptr;
-void (*o_system_property_read_callback)(prop_info *, T_Callback, void *) = nullptr;
+    T_Callback o_callback = nullptr;
+    void (*o_system_property_read_callback)(prop_info *, T_Callback, void *) = nullptr;
 
-ssize_t xread(int fd, void *buffer, size_t countToRead) {
-    ssize_t totalRead = 0;
-    char *currentBuf = static_cast<char *>(buffer);
-    size_t remainingBytes = countToRead;
+    ssize_t xread(int fd, void *buffer, size_t countToRead) {
+        ssize_t totalRead = 0;
+        char *currentBuf = static_cast<char *>(buffer);
+        size_t remainingBytes = countToRead;
 
-    while (remainingBytes > 0) {
-        const ssize_t ret = TEMP_FAILURE_RETRY(read(fd, currentBuf, remainingBytes));
-        if (ret < 0) {
-            return -1;
-        }
-        if (ret == 0) {
-            break;
-        }
+        while (remainingBytes > 0) {
+            const ssize_t ret = TEMP_FAILURE_RETRY(read(fd, currentBuf, remainingBytes));
+            if (ret < 0) {
+                return -1;
+            }
+            if (ret == 0) {
+                break;
+            }
 
-        currentBuf += ret;
-        totalRead += ret;
-        remainingBytes -= ret;
-    }
-
-    return totalRead;
-}
-
-ssize_t xwrite(int fd, const void *buffer, size_t countToWrite) {
-    ssize_t totalWritten = 0;
-    const char *currentBuf = static_cast<const char *>(buffer);
-    size_t remainingBytes = countToWrite;
-
-    while (remainingBytes > 0) {
-        const ssize_t ret = TEMP_FAILURE_RETRY(write(fd, currentBuf, remainingBytes));
-        if (ret < 0) {
-            return -1;
-        }
-        if (ret == 0) {
-            break;
+            currentBuf += ret;
+            totalRead += ret;
+            remainingBytes -= ret;
         }
 
-        currentBuf += ret;
-        totalWritten += ret;
-        remainingBytes -= ret;
+        return totalRead;
     }
 
-    return totalWritten;
-}
+    ssize_t xwrite(int fd, const void *buffer, size_t countToWrite) {
+        ssize_t totalWritten = 0;
+        const char *currentBuf = static_cast<const char *>(buffer);
+        size_t remainingBytes = countToWrite;
 
-bool readExact(int fd, void *buffer, size_t size) {
-    return xread(fd, buffer, size) == static_cast<ssize_t>(size);
-}
+        while (remainingBytes > 0) {
+            const ssize_t ret = TEMP_FAILURE_RETRY(write(fd, currentBuf, remainingBytes));
+            if (ret < 0) {
+                return -1;
+            }
+            if (ret == 0) {
+                break;
+            }
 
-bool writeExact(int fd, const void *buffer, size_t size) {
-    return xwrite(fd, buffer, size) == static_cast<ssize_t>(size);
-}
-
-void applySocketTimeout(int fd) {
-    const timeval timeout{
-            .tv_sec = PAYLOAD_TIMEOUT_MS / 1000,
-            .tv_usec = static_cast<suseconds_t>((PAYLOAD_TIMEOUT_MS % 1000) * 1000),
-    };
-
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-}
-
-bool readFileBytes(const char *path, std::vector<uint8_t> &out) {
-    out.clear();
-
-    const int file = open(path, O_RDONLY | O_CLOEXEC);
-    if (file < 0) {
-        return false;
-    }
-
-    std::vector<uint8_t> buffer(4096);
-    ssize_t bytes = 0;
-    while ((bytes = TEMP_FAILURE_RETRY(read(file, buffer.data(), buffer.size()))) > 0) {
-        out.insert(out.end(), buffer.begin(), buffer.begin() + bytes);
-    }
-
-    close(file);
-    return bytes == 0 && !out.empty();
-}
-
-bool loadPropBytes(std::vector<uint8_t> &out) {
-    if (readFileBytes(CUSTOM_PIF, out)) {
-        return true;
-    }
-    return readFileBytes(DEFAULT_PIF, out);
-}
-
-bool writeVector(int fd, const std::vector<uint8_t> &buffer) {
-    const uint32_t size = static_cast<uint32_t>(buffer.size());
-    if (!writeExact(fd, &size, sizeof(size))) {
-        return false;
-    }
-    return size == 0 || writeExact(fd, buffer.data(), size);
-}
-
-bool readVector(int fd, std::vector<uint8_t> &buffer) {
-    uint32_t size = 0;
-    if (!readExact(fd, &size, sizeof(size))) {
-        return false;
-    }
-
-    buffer.resize(size);
-    return size == 0 || readExact(fd, buffer.data(), size);
-}
-
-uint32_t crc32(const uint8_t *data, size_t len) {
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; ++i) {
-        crc ^= data[i];
-        for (int j = 0; j < 8; ++j) {
-            crc = (crc >> 1) ^ (0xEDB88320U & (-(crc & 1)));
+            currentBuf += ret;
+            totalWritten += ret;
+            remainingBytes -= ret;
         }
-    }
-    return ~crc;
-}
 
-bool verifyModule(const char *path, const char *expectedHex) {
-    const bool update = access("/data/adb/modules/playintegrityfix/update", F_OK) == 0;
-    if (update) {
-        return true;
+        return totalWritten;
     }
 
-    const int fd = open(path, O_RDWR);
-    if (fd < 0) {
-        return false;
+    bool readExact(int fd, void *buffer, size_t size) {
+        return xread(fd, buffer, size) == static_cast<ssize_t>(size);
     }
 
-    std::vector<uint8_t> buf;
-    uint8_t tmp[512];
-    ssize_t n = 0;
-    while ((n = read(fd, tmp, sizeof(tmp))) > 0) {
-        buf.insert(buf.end(), tmp, tmp + n);
-    }
-    if (buf.empty()) {
-        close(fd);
-        return false;
+    bool writeExact(int fd, const void *buffer, size_t size) {
+        return xwrite(fd, buffer, size) == static_cast<ssize_t>(size);
     }
 
-    const uint32_t crc = crc32(buf.data(), buf.size());
-    uint32_t expectedCrc = 0;
-    sscanf(expectedHex, "%x", &expectedCrc);
+    void applySocketTimeout(int fd) {
+        const timeval timeout{
+                .tv_sec = PAYLOAD_TIMEOUT_MS / 1000,
+                .tv_usec = static_cast<suseconds_t>((PAYLOAD_TIMEOUT_MS % 1000) * 1000),
+        };
 
-    if (crc == expectedCrc) {
-        close(fd);
-        return true;
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     }
 
-    LOGD("[COMPANION] module tampered!");
+    bool readFileBytes(const char *path, std::vector<uint8_t> &out) {
+        out.clear();
 
-    lseek(fd, 0, SEEK_SET);
-    std::vector<std::string> lines;
-    const std::string fileStr(buf.begin(), buf.end());
-    size_t pos = 0;
-    while (pos < fileStr.size()) {
-        const size_t next = fileStr.find('\n', pos);
-        std::string line = fileStr.substr(pos, next - pos + 1);
-        if (line.rfind("description=", 0) == 0) {
-            line = "description=❌ This module has been tampered, please install from official source.\n";
-        }
-        lines.push_back(line);
-        if (next == std::string::npos) {
-            break;
-        }
-        pos = next + 1;
-    }
-
-    if (ftruncate(fd, 0) != 0) {
-        close(fd);
-        return false;
-    }
-
-    lseek(fd, 0, SEEK_SET);
-    for (const auto &line : lines) {
-        if (write(fd, line.c_str(), line.size()) != static_cast<ssize_t>(line.size())) {
-            close(fd);
+        const int file = open(path, O_RDONLY | O_CLOEXEC);
+        if (file < 0) {
             return false;
         }
-    }
 
-    close(fd);
-    return false;
-}
-
-std::string propMapToJson() {
-    std::string json = "{";
-    bool first = true;
-    for (const auto &[key, value] : gConfig.propMap) {
-        if (!first) {
-            json += ",";
+        std::vector<uint8_t> buffer(4096);
+        ssize_t bytes = 0;
+        while ((bytes = TEMP_FAILURE_RETRY(read(file, buffer.data(), buffer.size()))) > 0) {
+            out.insert(out.end(), buffer.begin(), buffer.begin() + bytes);
         }
-        first = false;
-        json += "\"" + key + "\":\"" + value + "\"";
-    }
-    json += "}";
-    return json;
-}
 
-void modifyCallback(void *cookie, const char *name, const char *value, uint32_t serial) {
-    if (!cookie || !name || !value || !o_callback) {
-        return;
+        close(file);
+        return bytes == 0 && !out.empty();
     }
 
-    const char *oldValue = value;
-    const std::string_view prop(name);
-
-    if (prop == "init.svc.adbd") {
-        value = "stopped";
-    } else if (prop == "sys.usb.state") {
-        value = "mtp";
-    } else if (prop.ends_with("api_level")) {
-        if (!gConfig.deviceInitialSdkInt.empty()) {
-            value = gConfig.deviceInitialSdkInt.c_str();
+    bool loadPropBytes(std::vector<uint8_t> &out) {
+        if (readFileBytes(CUSTOM_PIF, out)) {
+            return true;
         }
-    } else if (prop.ends_with(".security_patch")) {
-        if (!gConfig.securityPatch.empty()) {
-            value = gConfig.securityPatch.c_str();
-        }
-    } else if (prop.ends_with(".build.id")) {
-        if (!gConfig.buildId.empty()) {
-            value = gConfig.buildId.c_str();
-        }
+        return readFileBytes(DEFAULT_PIF, out);
     }
 
-    if (strcmp(oldValue, value) == 0) {
-        if (gConfig.debug) {
-            LOGD("[%s]: %s (unchanged)", name, oldValue);
+    bool writeVector(int fd, const std::vector<uint8_t> &buffer) {
+        const uint32_t size = static_cast<uint32_t>(buffer.size());
+        if (!writeExact(fd, &size, sizeof(size))) {
+            return false;
         }
-    } else {
-        LOGD("[%s]: %s -> %s", name, oldValue, value);
+        return size == 0 || writeExact(fd, buffer.data(), size);
     }
 
-    o_callback(cookie, name, value, serial);
-}
+    bool readVector(int fd, std::vector<uint8_t> &buffer) {
+        uint32_t size = 0;
+        if (!readExact(fd, &size, sizeof(size))) {
+            return false;
+        }
 
-void systemPropertyReadCallback(prop_info *pi, T_Callback callback, void *cookie) {
-    if (pi && callback && cookie) {
-        o_callback = callback;
+        buffer.resize(size);
+        return size == 0 || readExact(fd, buffer.data(), size);
     }
-    o_system_property_read_callback(pi, modifyCallback, cookie);
-}
 
-bool doHook() {
-    void *ptr = DobbySymbolResolver(nullptr, "__system_property_read_callback");
-    if (ptr && DobbyHook(ptr, reinterpret_cast<void *>(systemPropertyReadCallback),
-                         reinterpret_cast<void **>(&o_system_property_read_callback)) == 0) {
-        LOGD("hook __system_property_read_callback successful at %p", ptr);
+    uint32_t crc32(const uint8_t *data, size_t len) {
+        uint32_t crc = 0xFFFFFFFF;
+        for (size_t i = 0; i < len; ++i) {
+            crc ^= data[i];
+            for (int j = 0; j < 8; ++j) {
+                crc = (crc >> 1) ^ (0xEDB88320U & (-(crc & 1)));
+            }
+        }
+        return ~crc;
+    }
+
+    bool verifyModule(const char *path, const char *expectedHex) {
+        // BYPASS: Karena ini adalah custom module mandiri (KeyboxRevive),
+        // kita bypass sistem validasi CRC (checksum) ini agar module.prop
+        // tidak otomatis terhapus atau berubah menjadi pesan error "tampered".
         return true;
     }
 
-    LOGE("hook __system_property_read_callback failed!");
-    return false;
-}
-
-void doSpoofVending() {
-    constexpr int requestSdk = 32;
-
-    jclass buildVersionClass = gEnv->FindClass("android/os/Build$VERSION");
-    if (buildVersionClass == nullptr) {
-        LOGE("Build.VERSION class not found");
-        gEnv->ExceptionClear();
-        return;
+    std::string propMapToJson() {
+        std::string json = "{";
+        bool first = true;
+        for (const auto &[key, value] : gConfig.propMap) {
+            if (!first) {
+                json += ",";
+            }
+            first = false;
+            json += "\"" + key + "\":\"" + value + "\"";
+        }
+        json += "}";
+        return json;
     }
 
-    jfieldID sdkIntFieldId = gEnv->GetStaticFieldID(buildVersionClass, "SDK_INT", "I");
-    if (sdkIntFieldId == nullptr) {
-        LOGE("SDK_INT field not found");
-        gEnv->ExceptionClear();
-        gEnv->DeleteLocalRef(buildVersionClass);
-        return;
-    }
+    void modifyCallback(void *cookie, const char *name, const char *value, uint32_t serial) {
+        if (!cookie || !name || !value || !o_callback) {
+            return;
+        }
 
-    const int oldValue = gEnv->GetStaticIntField(buildVersionClass, sdkIntFieldId);
-    const int targetSdk = std::min(oldValue, requestSdk);
-    if (oldValue == targetSdk) {
-        gEnv->DeleteLocalRef(buildVersionClass);
-        return;
-    }
+        const char *oldValue = value;
+        const std::string_view prop(name);
 
-    gEnv->SetStaticIntField(buildVersionClass, sdkIntFieldId, targetSdk);
-    if (gEnv->ExceptionCheck()) {
-        gEnv->ExceptionDescribe();
-        gEnv->ExceptionClear();
-        LOGE("SDK_INT field not accessible (JNI Exception)");
-    } else {
-        LOGD("[SDK_INT]: %d -> %d", oldValue, targetSdk);
-    }
-
-    gEnv->DeleteLocalRef(buildVersionClass);
-}
-
-void updateBuildFields() {
-    jclass buildClass = gEnv->FindClass("android/os/Build");
-    jclass versionClass = gEnv->FindClass("android/os/Build$VERSION");
-    if (buildClass == nullptr || versionClass == nullptr) {
-        gEnv->ExceptionClear();
-        return;
-    }
-
-    for (const auto &[key, value] : gConfig.propMap) {
-        jclass targetClass = buildClass;
-        jfieldID fieldId = gEnv->GetStaticFieldID(buildClass, key.c_str(), "Ljava/lang/String;");
-        if (gEnv->ExceptionCheck()) {
-            gEnv->ExceptionClear();
-            fieldId = gEnv->GetStaticFieldID(versionClass, key.c_str(), "Ljava/lang/String;");
-            targetClass = versionClass;
-            if (gEnv->ExceptionCheck()) {
-                gEnv->ExceptionClear();
-                continue;
+        if (prop == "init.svc.adbd") {
+            value = "stopped";
+        } else if (prop == "sys.usb.state") {
+            value = "mtp";
+        } else if (prop.ends_with("api_level")) {
+            if (!gConfig.deviceInitialSdkInt.empty()) {
+                value = gConfig.deviceInitialSdkInt.c_str();
+            }
+        } else if (prop.ends_with(".security_patch")) {
+            if (!gConfig.securityPatch.empty()) {
+                value = gConfig.securityPatch.c_str();
+            }
+        } else if (prop.ends_with(".build.id")) {
+            if (!gConfig.buildId.empty()) {
+                value = gConfig.buildId.c_str();
             }
         }
 
-        jstring jValue = gEnv->NewStringUTF(value.c_str());
-        gEnv->SetStaticObjectField(targetClass, fieldId, jValue);
-        if (gEnv->ExceptionCheck()) {
-            gEnv->ExceptionClear();
-            gEnv->DeleteLocalRef(jValue);
-            continue;
+        if (strcmp(oldValue, value) == 0) {
+            if (gConfig.debug) {
+                LOGD("[%s]: %s (unchanged)", name, oldValue);
+            }
+        } else {
+            LOGD("[%s]: %s -> %s", name, oldValue, value);
         }
 
-        LOGD("Set '%s' to '%s'", key.c_str(), value.c_str());
-        gEnv->DeleteLocalRef(jValue);
+        o_callback(cookie, name, value, serial);
     }
 
-    gEnv->DeleteLocalRef(versionClass);
-    gEnv->DeleteLocalRef(buildClass);
-}
-
-void injectDex() {
-    if (gDexBytes.empty()) {
-        LOGD("[INJECT] No dex payload available");
-        return;
+    void systemPropertyReadCallback(prop_info *pi, T_Callback callback, void *cookie) {
+        if (pi && callback && cookie) {
+            o_callback = callback;
+        }
+        o_system_property_read_callback(pi, modifyCallback, cookie);
     }
 
-    jclass classLoaderClass = gEnv->FindClass("java/lang/ClassLoader");
-    jmethodID getSystemClassLoader = gEnv->GetStaticMethodID(
-            classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
-    jobject systemClassLoader = gEnv->CallStaticObjectMethod(classLoaderClass, getSystemClassLoader);
-    if (gEnv->ExceptionCheck()) {
-        gEnv->ExceptionDescribe();
-        gEnv->ExceptionClear();
-        return;
-    }
+    bool doHook() {
+        void *ptr = DobbySymbolResolver(nullptr, "__system_property_read_callback");
+        if (ptr && DobbyHook(ptr, reinterpret_cast<void *>(systemPropertyReadCallback),
+                             reinterpret_cast<void **>(&o_system_property_read_callback)) == 0) {
+            LOGD("hook __system_property_read_callback successful at %p", ptr);
+            return true;
+        }
 
-    jobject dexBuffer = gEnv->NewDirectByteBuffer(gDexBytes.data(), static_cast<jlong>(gDexBytes.size()));
-    jclass inMemoryClassLoaderClass = gEnv->FindClass("dalvik/system/InMemoryDexClassLoader");
-    jmethodID inMemoryClassLoaderInit = gEnv->GetMethodID(
-            inMemoryClassLoaderClass, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
-    jobject dexClassLoader = gEnv->NewObject(
-            inMemoryClassLoaderClass, inMemoryClassLoaderInit, dexBuffer, systemClassLoader);
-    if (gEnv->ExceptionCheck()) {
-        gEnv->ExceptionDescribe();
-        gEnv->ExceptionClear();
-        return;
-    }
-
-    jmethodID loadClass = gEnv->GetMethodID(
-            classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring entryClassName = gEnv->NewStringUTF("es.chiteroman.playintegrityfix.EntryPoint");
-    jobject entryClassObject = gEnv->CallObjectMethod(dexClassLoader, loadClass, entryClassName);
-    if (gEnv->ExceptionCheck()) {
-        gEnv->ExceptionDescribe();
-        gEnv->ExceptionClear();
-        return;
-    }
-
-    jclass entryPointClass = static_cast<jclass>(entryClassObject);
-    jmethodID entryInit = gEnv->GetStaticMethodID(entryPointClass, "init", "(Ljava/lang/String;ZZZ)V");
-    const std::string json = propMapToJson();
-    jstring jsonString = gEnv->NewStringUTF(json.c_str());
-    gEnv->CallStaticVoidMethod(entryPointClass, entryInit, jsonString, gConfig.spoofProvider,
-                               gConfig.spoofSignature, gConfig.spoofBuild);
-    if (gEnv->ExceptionCheck()) {
-        gEnv->ExceptionDescribe();
-        gEnv->ExceptionClear();
-    }
-
-    gEnv->DeleteLocalRef(jsonString);
-    gEnv->DeleteLocalRef(entryClassObject);
-    gEnv->DeleteLocalRef(entryClassName);
-    gEnv->DeleteLocalRef(dexClassLoader);
-    gEnv->DeleteLocalRef(inMemoryClassLoaderClass);
-    gEnv->DeleteLocalRef(dexBuffer);
-    gEnv->DeleteLocalRef(systemClassLoader);
-    gEnv->DeleteLocalRef(classLoaderClass);
-}
-
-bool requestPayload(int fd) {
-    if (fd < 0) {
+        LOGE("hook __system_property_read_callback failed!");
         return false;
     }
 
-    applySocketTimeout(fd);
+    void doSpoofVending() {
+        constexpr int requestSdk = 32;
 
-    bool ok = writeExact(fd, &COMMAND_LOAD_PAYLOAD, sizeof(COMMAND_LOAD_PAYLOAD));
-    bool companionOk = false;
-    ok = ok && readExact(fd, &companionOk, sizeof(companionOk));
-    if (!ok || !companionOk) {
+        jclass buildVersionClass = gEnv->FindClass("android/os/Build$VERSION");
+        if (buildVersionClass == nullptr) {
+            LOGE("Build.VERSION class not found");
+            gEnv->ExceptionClear();
+            return;
+        }
+
+        jfieldID sdkIntFieldId = gEnv->GetStaticFieldID(buildVersionClass, "SDK_INT", "I");
+        if (sdkIntFieldId == nullptr) {
+            LOGE("SDK_INT field not found");
+            gEnv->ExceptionClear();
+            gEnv->DeleteLocalRef(buildVersionClass);
+            return;
+        }
+
+        const int oldValue = gEnv->GetStaticIntField(buildVersionClass, sdkIntFieldId);
+        const int targetSdk = std::min(oldValue, requestSdk);
+        if (oldValue == targetSdk) {
+            gEnv->DeleteLocalRef(buildVersionClass);
+            return;
+        }
+
+        gEnv->SetStaticIntField(buildVersionClass, sdkIntFieldId, targetSdk);
+        if (gEnv->ExceptionCheck()) {
+            gEnv->ExceptionDescribe();
+            gEnv->ExceptionClear();
+            LOGE("SDK_INT field not accessible (JNI Exception)");
+        } else {
+            LOGD("[SDK_INT]: %d -> %d", oldValue, targetSdk);
+        }
+
+        gEnv->DeleteLocalRef(buildVersionClass);
+    }
+
+    void updateBuildFields() {
+        jclass buildClass = gEnv->FindClass("android/os/Build");
+        jclass versionClass = gEnv->FindClass("android/os/Build$VERSION");
+        if (buildClass == nullptr || versionClass == nullptr) {
+            gEnv->ExceptionClear();
+            return;
+        }
+
+        for (const auto &[key, value] : gConfig.propMap) {
+            jclass targetClass = buildClass;
+            jfieldID fieldId = gEnv->GetStaticFieldID(buildClass, key.c_str(), "Ljava/lang/String;");
+            if (gEnv->ExceptionCheck()) {
+                gEnv->ExceptionClear();
+                fieldId = gEnv->GetStaticFieldID(versionClass, key.c_str(), "Ljava/lang/String;");
+                targetClass = versionClass;
+                if (gEnv->ExceptionCheck()) {
+                    gEnv->ExceptionClear();
+                    continue;
+                }
+            }
+
+            jstring jValue = gEnv->NewStringUTF(value.c_str());
+            gEnv->SetStaticObjectField(targetClass, fieldId, jValue);
+            if (gEnv->ExceptionCheck()) {
+                gEnv->ExceptionClear();
+                gEnv->DeleteLocalRef(jValue);
+                continue;
+            }
+
+            LOGD("Set '%s' to '%s'", key.c_str(), value.c_str());
+            gEnv->DeleteLocalRef(jValue);
+        }
+
+        gEnv->DeleteLocalRef(versionClass);
+        gEnv->DeleteLocalRef(buildClass);
+    }
+
+    void injectDex() {
+        if (gDexBytes.empty()) {
+            LOGD("[INJECT] No dex payload available");
+            return;
+        }
+
+        jclass classLoaderClass = gEnv->FindClass("java/lang/ClassLoader");
+        jmethodID getSystemClassLoader = gEnv->GetStaticMethodID(
+                classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
+        jobject systemClassLoader = gEnv->CallStaticObjectMethod(classLoaderClass, getSystemClassLoader);
+        if (gEnv->ExceptionCheck()) {
+            gEnv->ExceptionDescribe();
+            gEnv->ExceptionClear();
+            return;
+        }
+
+        jobject dexBuffer = gEnv->NewDirectByteBuffer(gDexBytes.data(), static_cast<jlong>(gDexBytes.size()));
+        jclass inMemoryClassLoaderClass = gEnv->FindClass("dalvik/system/InMemoryDexClassLoader");
+        jmethodID inMemoryClassLoaderInit = gEnv->GetMethodID(
+                inMemoryClassLoaderClass, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
+        jobject dexClassLoader = gEnv->NewObject(
+                inMemoryClassLoaderClass, inMemoryClassLoaderInit, dexBuffer, systemClassLoader);
+        if (gEnv->ExceptionCheck()) {
+            gEnv->ExceptionDescribe();
+            gEnv->ExceptionClear();
+            return;
+        }
+
+        jmethodID loadClass = gEnv->GetMethodID(
+                classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+        jstring entryClassName = gEnv->NewStringUTF("es.chiteroman.playintegrityfix.EntryPoint");
+        jobject entryClassObject = gEnv->CallObjectMethod(dexClassLoader, loadClass, entryClassName);
+        if (gEnv->ExceptionCheck()) {
+            gEnv->ExceptionDescribe();
+            gEnv->ExceptionClear();
+            return;
+        }
+
+        jclass entryPointClass = static_cast<jclass>(entryClassObject);
+        jmethodID entryInit = gEnv->GetStaticMethodID(entryPointClass, "init", "(Ljava/lang/String;ZZZ)V");
+        const std::string json = propMapToJson();
+        jstring jsonString = gEnv->NewStringUTF(json.c_str());
+        gEnv->CallStaticVoidMethod(entryPointClass, entryInit, jsonString, gConfig.spoofProvider,
+                                   gConfig.spoofSignature, gConfig.spoofBuild);
+        if (gEnv->ExceptionCheck()) {
+            gEnv->ExceptionDescribe();
+            gEnv->ExceptionClear();
+        }
+
+        gEnv->DeleteLocalRef(jsonString);
+        gEnv->DeleteLocalRef(entryClassObject);
+        gEnv->DeleteLocalRef(entryClassName);
+        gEnv->DeleteLocalRef(dexClassLoader);
+        gEnv->DeleteLocalRef(inMemoryClassLoaderClass);
+        gEnv->DeleteLocalRef(dexBuffer);
+        gEnv->DeleteLocalRef(systemClassLoader);
+        gEnv->DeleteLocalRef(classLoaderClass);
+    }
+
+    bool requestPayload(int fd) {
+        if (fd < 0) {
+            return false;
+        }
+
+        applySocketTimeout(fd);
+
+        bool ok = writeExact(fd, &COMMAND_LOAD_PAYLOAD, sizeof(COMMAND_LOAD_PAYLOAD));
+        bool companionOk = false;
+        ok = ok && readExact(fd, &companionOk, sizeof(companionOk));
+        if (!ok || !companionOk) {
+            close(fd);
+            return false;
+        }
+
+        ok = readConfig(fd, gConfig);
+        if (ok && gConfig.needsDex()) {
+            ok = readVector(fd, gDexBytes);
+        } else {
+            gDexBytes.clear();
+        }
+
         close(fd);
-        return false;
+        if (!ok) {
+            gDexBytes.clear();
+            gConfig = {};
+            return false;
+        }
+        return true;
     }
 
-    ok = readConfig(fd, gConfig);
-    if (ok && gConfig.needsDex()) {
-        ok = readVector(fd, gDexBytes);
-    } else {
-        gDexBytes.clear();
-    }
+    void companion(int fd) {
+        applySocketTimeout(fd);
 
-    close(fd);
-    if (!ok) {
-        gDexBytes.clear();
-        gConfig = {};
-        return false;
-    }
-    return true;
-}
+        bool ok = verifyModule(MODULE_PROP, MODULE_PROP_CHECKSUM_HEX);
+        uint8_t command = 0;
+        ok = ok && readExact(fd, &command, sizeof(command));
+        ok = ok && command == COMMAND_LOAD_PAYLOAD;
 
-void companion(int fd) {
-    applySocketTimeout(fd);
+        std::vector<uint8_t> propBytes;
+        std::vector<uint8_t> dexBytes;
+        pif::Config config;
 
-    bool ok = verifyModule(MODULE_PROP, MODULE_PROP_CHECKSUM_HEX);
-    uint8_t command = 0;
-    ok = ok && readExact(fd, &command, sizeof(command));
-    ok = ok && command == COMMAND_LOAD_PAYLOAD;
+        if (ok) {
+            ok = loadPropBytes(propBytes);
+        }
+        if (ok) {
+            const std::string_view propView(reinterpret_cast<const char *>(propBytes.data()), propBytes.size());
+            config = pif::parseConfig(propView);
+        }
+        if (ok && config.needsDex()) {
+            ok = readFileBytes(DEX_PATH, dexBytes);
+        }
 
-    std::vector<uint8_t> propBytes;
-    std::vector<uint8_t> dexBytes;
-    pif::Config config;
+        writeExact(fd, &ok, sizeof(ok));
+        if (!ok) {
+            return;
+        }
 
-    if (ok) {
-        ok = loadPropBytes(propBytes);
-    }
-    if (ok) {
-        const std::string_view propView(reinterpret_cast<const char *>(propBytes.data()), propBytes.size());
-        config = pif::parseConfig(propView);
-    }
-    if (ok && config.needsDex()) {
-        ok = readFileBytes(DEX_PATH, dexBytes);
-    }
+        ok = writeConfig(fd, config);
+        if (ok && config.needsDex()) {
+            ok = writeVector(fd, dexBytes);
+        }
 
-    writeExact(fd, &ok, sizeof(ok));
-    if (!ok) {
-        return;
+        if (!ok) {
+            LOGE("[COMPANION] failed to send payload");
+        }
     }
-
-    ok = writeConfig(fd, config);
-    if (ok && config.needsDex()) {
-        ok = writeVector(fd, dexBytes);
-    }
-
-    if (!ok) {
-        LOGE("[COMPANION] failed to send payload");
-    }
-}
 
 }
 
