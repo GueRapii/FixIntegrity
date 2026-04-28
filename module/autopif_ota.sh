@@ -37,8 +37,8 @@ fetch_autopif() {
     fi
 }
 
-main_link="https://raw.githubusercontent.com/KOWX712/PlayIntegrityFix/inject_s/module/autopif.sh"
-fallback_link="https://raw.gitmirror.com/KOWX712/PlayIntegrityFix/inject_s/module/autopif.sh"
+main_link="https://raw.githubusercontent.com/GueRapii/FixIntegrity/refs/heads/inject_s/module/autopif.sh"
+fallback_link="https://raw.gitmirror.com/GueRapii/FixIntegrity/refs/heads/inject_s/module/autopif.sh"
 
 if fetch_autopif "$main_link"; then
     true
