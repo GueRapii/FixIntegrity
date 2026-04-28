@@ -1,11 +1,11 @@
-FINGERPRINT=google/oriole_beta/oriole:CANARY/ZP11.260220.007/14993212:user/release-keys
+FINGERPRINT=google/mustang_beta/mustang:CANARY/ZP11.260320.007/15154667:user/release-keys
 MANUFACTURER=Google
-MODEL=Pixel 6
-SECURITY_PATCH=2026-03-05
+MODEL=Pixel 10 Pro XL
+SECURITY_PATCH=2026-04-05
 spoofBuild=true
-spoofProps=false
-spoofProvider=false
-spoofSignature=false
+spoofProps=true
+spoofProvider=true
+spoofSignature=true
 spoofVendingBuild=true
 spoofVendingSdk=false
 DEBUG=false

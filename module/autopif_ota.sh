@@ -1,13 +1,13 @@
 #!/bin/sh
 
 PATH=/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/data/data/com.termux/files/usr/bin:$PATH
-MODDIR=/data/adb/modules/playintegrityfix
+MODDIR=${0%/*}
 
 # lets try to use tmpfs for processing
 TEMPDIR="$MODDIR/temp" #fallback
-[ -w /sbin ] && TEMPDIR="/sbin/playintegrityfix"
-[ -w /debug_ramdisk ] && TEMPDIR="/debug_ramdisk/playintegrityfix"
-[ -w /dev ] && TEMPDIR="/dev/playintegrityfix"
+[ -w /sbin ] && TEMPDIR="/sbin/fixintegrity"
+[ -w /debug_ramdisk ] && TEMPDIR="/debug_ramdisk/fixintegrity"
+[ -w /dev ] && TEMPDIR="/dev/fixintegrity"
 mkdir -p "$TEMPDIR"
 
 download() { busybox wget -T 10 --no-check-certificate -qO - "$1" > "$2"; }

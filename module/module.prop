@@ -1,7 +1,7 @@
-id=playintegrityfix
-name=Play Integrity Fix [INJECT]
-version=v4.5-inject-s
-versionCode=45
-author=chiteroman, KOWX712
-description=Universal modular fix for Play Integrity on devices running Android 8-16
-updateJson=https://raw.githubusercontent.com/KOWX712/PlayIntegrityFix/inject_s/update.json
+id=fixintegrity
+name=FixIntegrity
+version=v1.0
+versionCode=1
+author=@GueRapii on telegram [t.me/randommodules]
+description=A smart module to easily install, restore, and auto-update your Tricky Store Keybox 📦📦.
+zygisk=yes

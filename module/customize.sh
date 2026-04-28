@@ -1,3 +1,5 @@
+#!/system/bin/sh
+
 # Don't flash in recovery!
 if ! $BOOTMODE; then
     ui_print "*********************************************************"
@@ -13,13 +15,15 @@ if [ "$API" -lt 26 ]; then
 fi
 
 check_zygisk() {
+    local ZYGISK_MODULE="/data/adb/modules/zygisksu"
+    local REZYGISK_MODULE="/data/adb/modules/rezygisk"
     local MAGISK_DIR="/data/adb/magisk"
     local ZYGISK_MSG="Zygisk is not enabled. Please either:
     - Enable Zygisk in Magisk settings
     - Install ZygiskNext or ReZygisk module"
 
-    # Check if Zygisk module exists
-    if find /data/adb/modules /data/adb/modules_update -name "libzygisk.so" | grep -q .; then
+    # Check if Zygisk module directory exists
+    if [ -d "$ZYGISK_MODULE" ] || [ -d "$REZYGISK_MODULE" ]; then
         return 0
     fi
 
@@ -41,6 +45,47 @@ check_zygisk() {
 # Module requires Zygisk to work
 check_zygisk
 
+ui_print "==================================="
+ui_print "   FixIntegrity 📦📦 Auto-Update   "
+ui_print "==================================="
+ui_print "Do you want to enable Auto-Update?"
+ui_print "It will check for updates every 12 hours."
+ui_print " "
+ui_print "  [ VOLUME UP ]   = YES, Enable"
+ui_print "  [ VOLUME DOWN ] = NO, Disable"
+ui_print " "
+
+# Loop untuk menangkap input tombol volume
+while true; do
+    key=$(getevent -qlc 1 2>/dev/null | awk '{ print $3 }')
+    if [ "$key" = "KEY_VOLUMEUP" ]; then
+        ui_print " -> You selected: YES (Auto-Update Enabled)"
+        # Buat file penanda bahwa user setuju auto-update
+        touch "$MODPATH/auto_update"
+        break
+    elif [ "$key" = "KEY_VOLUMEDOWN" ]; then
+        ui_print " -> You selected: NO (Auto-Update Disabled)"
+        break
+    fi
+done
+
+ui_print "==================================="
+ui_print "[!] NOTE:"
+ui_print "You can ALWAYS update manually at any"
+ui_print "time by pressing the 'Action' button"
+ui_print "in the Magisk/KernelSU app."
+ui_print " "
+if [ -f "$MODPATH/auto_update" ]; then
+    ui_print "Since Auto-Update is ON, the script"
+    ui_print "will automatically run in the background"
+    ui_print "every 12 hours."
+    ui_print " "
+fi
+ui_print "-> After rebooting, you can just click"
+ui_print "   the Action button right away to get"
+ui_print "   the newest keybox 📦📦 immediately!"
+ui_print "==================================="
+
 # safetynet-fix module is obsolete and it's incompatible with PIF
 SNFix="/data/adb/modules/safetynet-fix"
 if [ -d "$SNFix" ]; then
@@ -59,20 +104,16 @@ if [ -d "/data/adb/modules/MagiskHidePropsConf" ]; then
     ui_print "! WARNING, MagiskHidePropsConf module may cause issues with PIF."
 fi
 
-# Preserve previous setting
-if [ -f "/data/adb/modules/playintegrityfix/pif.prop" ]; then
-    spoofConfig="spoofBuild spoofProps spoofProvider spoofSignature spoofVendingBuild spoofVendingSdk"
-    for config in $spoofConfig; do
-        grep -q "$config" "/data/adb/modules/playintegrityfix/pif.prop" || continue
-        if grep -q "$config=true" "/data/adb/modules/playintegrityfix/pif.prop"; then
-            sed -i "s/$config=.*/$config=true/" "$MODPATH/pif.prop"
-        else
-            sed -i "s/$config=.*/$config=false/" "$MODPATH/pif.prop"
-        fi
-    done
+# Preserve previous setting (Path sudah disesuaikan ke FixIntegrity)
+if [ -f "/data/adb/modules/fixintegrity/pif.prop" ]; then
+    ui_print "- Restoring previous pif.prop settings..."
+    cp -af "/data/adb/modules/fixintegrity/pif.prop" "$MODPATH/pif.prop"
+else
+    ui_print "- Fresh install: PIF is inactive until Action is pressed."
+    mv "$MODPATH/pif.prop" "$MODPATH/pif.prop.config"
 fi
-if [ -f "/data/adb/modules/playintegrityfix/system.prop" ]; then
-    cp -af /data/adb/modules/playintegrityfix/system.prop "$MODPATH/system.prop"
+if [ -f "/data/adb/modules/fixintegrity/system.prop" ]; then
+    cp -af /data/adb/modules/fixintegrity/system.prop "$MODPATH/system.prop"
 fi
 
 # Check custom fingerprint
@@ -81,11 +122,13 @@ if [ -f "/data/adb/pif.prop" ]; then
     mv -f /data/adb/pif.prop /data/adb/pif.prop.old
 fi
 
-# give exec perm to autopif.sh
+# Beri izin eksekusi pada semua skrip
 chmod +x "$MODPATH/autopif.sh"
 chmod +x "$MODPATH/autopif_ota.sh"
+chmod +x "$MODPATH/action.sh"
+chmod +x "$MODPATH/security_patch.sh"
 
-# Clean up
+# Bersihkan cache GMS yang tersisa
 for pkg in com.google.android.gms com.android.vending; do
     for dir in "/data/user_de/0/$pkg" "/data/data/$pkg"; do
         [ -d "$dir" ] || continue

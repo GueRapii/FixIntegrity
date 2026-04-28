@@ -2,7 +2,7 @@
 
 # Tricky Store Security Patch Util
 
-MODDIR="/data/adb/modules/playintegrityfix"
+MODDIR="${0%/*}"
 AUTO_FLAG="/data/adb/tricky_store/pif_auto_security_patch"
 
 case "$1" in
@@ -12,8 +12,8 @@ esac
 
 if [ -f "/data/adb/pif.prop" ]; then
     PIFPROP="/data/adb/pif.prop"
-elif [ -f "/data/adb/modules/playintegrityfix/pif.prop" ]; then
-    PIFPROP="/data/adb/modules/playintegrityfix/pif.prop"
+elif [ -f "$MODDIR/pif.prop" ]; then
+    PIFPROP="$MODDIR/pif.prop"
 else
     echo "! No pif.prop found, aborting..."
     exit 1
@@ -67,9 +67,3 @@ cat << EOF > $MODDIR/system.prop
 ro.build.version.security_patch=$SECURITY_PATCH
 ro.vendor.build.security_patch=$SECURITY_PATCH
 EOF
-
-if resetprop --help | grep "compact" > /dev/null; then
-    resetprop -n ro.build.version.security_patch "$SECURITY_PATCH"
-    resetprop -n ro.vendor.build.security_patch "$SECURITY_PATCH"
-    resetprop -c
-fi
