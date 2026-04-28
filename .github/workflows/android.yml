@@ -1,0 +1,63 @@
+name: Android CI
+
+on:
+  push:
+    branches: inject_s
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/autopif.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26
+
+    steps:
+    - name: Check out
+      uses: actions/checkout@v6
+      with:
+        submodules: 'recursive'
+        fetch-depth: 1
+        ref: inject_s
+
+    - name: Set up JDK
+      uses: actions/setup-java@v5
+      with:
+        distribution: 'temurin'
+        java-version: 21
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v5
+      with:
+        version: 'latest'
+
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 'latest'
+        cache: 'pnpm'
+        cache-dependency-path: webui/pnpm-lock.yaml
+
+    - name: Build WebUI
+      run: |
+        cd webui
+        pnpm install --frozen-lockfile
+        pnpm run build
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build with Gradle
+      run: ./gradlew assembleRelease
+
+    - name: Setup variables
+      run: |
+        VERSION=$(jq -r '.version' update.json)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Upload CI module zip as artifact zip
+      uses: actions/upload-artifact@v7
+      with:
+        name: PlayIntegrityFix_${{ env.VERSION }}-inject-s_${{ github.run_number }}
+        path: 'module/*'
+        compression-level: 9

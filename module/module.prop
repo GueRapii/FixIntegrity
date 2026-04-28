@@ -1,0 +1,7 @@
+id=fixintegrity
+name=FixIntegrity
+version=v1.0
+versionCode=1
+author=@GueRapii on telegram [t.me/randommodules]
+description=A smart module to easily install, restore, and auto-update your Tricky Store Keybox 📦📦.
+zygisk=yes

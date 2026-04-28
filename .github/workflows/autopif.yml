@@ -1,0 +1,137 @@
+name: autopif
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  get_device_list:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.get_info.outputs.matrix }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+        ref: bot
+
+    - name: Get device list
+      id: get_info
+      run: |
+        download() { wget -T 20 --no-check-certificate "$1" -O "$2"; }
+
+        mkdir -p tmp && cd tmp
+        download https://developer.android.com/about/versions PIXEL_VERSIONS_HTML
+        download "$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n1)" PIXEL_LATEST_HTML
+        download "https://developer.android.com$(grep -o 'href=".*download.*"' PIXEL_LATEST_HTML | grep 'qpr' | cut -d\" -f2 | head -n1)" PIXEL_FI_HTML
+
+        # Extract device information
+        grep -A1 'tr id=' PIXEL_FI_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>.*;\1;' > MODEL_LIST
+        grep 'tr id=' PIXEL_FI_HTML | sed 's;.*<tr id="\(.*\)">.*;\1_beta;' > PRODUCT_LIST
+
+        matrix_json=$(paste MODEL_LIST PRODUCT_LIST | jq -R 'split("\t") | {model: .[0], product: .[1]}' | jq -s '{include: .}' | jq -c .)
+        echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+
+  process_rom:
+    needs: get_device_list
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.get_device_list.outputs.matrix) }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+        ref: bot
+
+    - name: Process ROM
+      uses: nick-invision/retry@v4
+      with:
+        timeout_minutes: 10
+        max_attempts: 3
+        command: |
+          model="${{ matrix.model }}"
+          product="${{ matrix.product }}"
+
+          mkdir -p tmp && cd tmp
+
+          # Get device fingerprint and security patch from Flash Tool and bulletins
+          DEVICE="$(echo "$product" | sed 's/_beta//')"
+          wget -T 20 --no-check-certificate https://flash.android.com -O PIXEL_FLASH_HTML
+          FLASH_KEY=$(grep -o '<body data-client-config=.*' PIXEL_FLASH_HTML | cut -d\; -f2 | cut -d\& -f1)
+          curl -H "Referer: https://flash.android.com" -s "https://content-flashstation-pa.googleapis.com/v1/builds?product=$product&key=$FLASH_KEY" > PIXEL_STATION_JSON
+          tac PIXEL_STATION_JSON | grep -m1 -A13 '"canary": true' > PIXEL_CANARY_JSON
+          ID="$(grep 'releaseCandidateName' PIXEL_CANARY_JSON | cut -d\" -f4)"
+          INCREMENTAL="$(grep 'buildId' PIXEL_CANARY_JSON | cut -d\" -f4)"
+          FINGERPRINT="google/$product/$DEVICE:CANARY/$ID/$INCREMENTAL:user/release-keys"
+          wget -T 20 --no-check-certificate https://source.android.com/docs/security/bulletin/pixel -O PIXEL_SECBULL_HTML
+          CANARY_ID="$(grep '"id"' PIXEL_CANARY_JSON | sed -e 's;.*canary-\(.*\)".*;\1;' -e 's;^\(.\{4\}\);\1-;')"
+          SECURITY_PATCH="$(grep "<td>$CANARY_ID" PIXEL_SECBULL_HTML | sed 's;.*<td>\(.*\)</td>;\1;')"
+
+          if [ -z "$ID" ] || [ -z "$INCREMENTAL" ]; then
+            echo "! Failed to get pif.prop for $product"
+            exit 1
+          fi
+
+          if [ -z "$SECURITY_PATCH" ]; then
+            echo "! Failed to determine exact security patch level"
+            echo "- Assuming probable security patch level from Canary build info"
+            SECURITY_PATCH="${CANARY_ID}-05"
+          fi
+
+          cat <<EOF > ../${product}.prop
+          FINGERPRINT=$FINGERPRINT
+          MANUFACTURER=Google
+          MODEL=$model
+          SECURITY_PATCH=$SECURITY_PATCH
+          EOF
+
+    - name: Upload digest artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.product }}
+        path: ${{ matrix.product }}.prop
+
+  commit_and_push:
+    needs: [get_device_list, process_rom]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+        ref: bot
+
+    - name: Clean up
+      run: |
+        rm -rf device_prop/*
+
+    - name: Download all device prop
+      uses: actions/download-artifact@v8
+      with:
+        path: device_prop
+
+    - name: Flatten artifacts
+      run: |
+        find device_prop -mindepth 2 -type f -exec mv -t device_prop/ {} +
+        find device_prop -type d -empty -delete
+
+    - name: Export formatted device list
+      run: |
+        echo '${{ needs.get_device_list.outputs.matrix }}' | jq '.include | map({model, product})' > device_list.json
+
+    - name: Commit and Push
+      run: |
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+
+        git add device_prop/. device_list.json
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "update device list" && git push
+        fi

@@ -1,0 +1,11 @@
+FINGERPRINT=google/mustang_beta/mustang:CANARY/ZP11.260320.007/15154667:user/release-keys
+MANUFACTURER=Google
+MODEL=Pixel 10 Pro XL
+SECURITY_PATCH=2026-04-05
+spoofBuild=true
+spoofProps=true
+spoofProvider=true
+spoofSignature=true
+spoofVendingBuild=true
+spoofVendingSdk=false
+DEBUG=false
