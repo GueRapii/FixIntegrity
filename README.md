@@ -1,4 +1,4 @@
-# Keybox Revive 📦📦
+# FixIntegrity 📦📦
 
 A simple Magisk / KernelSU / APatch module to easily install, restore, and update your `keybox.xml` for Tricky Store.
 
@@ -30,7 +30,7 @@ A simple Magisk / KernelSU / APatch module to easily install, restore, and updat
 ## 💡 How to Use
 
 1. Open the Magisk / KernelSU app and go to the Modules section.
-2. Find **Keybox Revive** and tap the **Action** button (the terminal/play icon).
+2. Find **FixIntegrity** and tap the **Action** button (the terminal/play icon).
 3. The script will automatically check for updates.
 4. If a new version is found, it will automatically download and apply the new `keybox.xml` to `/data/adb/tricky_store/`.
 5. If your current keybox is still valid and up-to-date, it will notify you without downloading anything.
