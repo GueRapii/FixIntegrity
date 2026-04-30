@@ -1,6 +1,6 @@
 {
-    "version": "v1.0.1",
-    "versionCode": 010001,
-    "zipUrl": "https://github.com/GueRapii/FixIntegrity/releases/download/v1.0.1/FixIntegrity.v1.0.1.zip",
+    "version": "v1.1.0",
+    "versionCode": 10100,
+    "zipUrl": "https://github.com/GueRapii/FixIntegrity/releases/download/1.1.0/FixIntegrity.v1.1.0.zip",
     "changelog": "https://raw.githubusercontent.com/GueRapii/FixIntegrity/refs/heads/inject_s/CHANGELOG.md"
 }
