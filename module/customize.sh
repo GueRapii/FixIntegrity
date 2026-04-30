@@ -55,12 +55,12 @@ ui_print "  [ VOLUME UP ]   = YES, Enable"
 ui_print "  [ VOLUME DOWN ] = NO, Disable"
 ui_print " "
 
-# Loop untuk menangkap input tombol volume
+# Loop to capture volume button input
 while true; do
     key=$(getevent -qlc 1 2>/dev/null | awk '{ print $3 }')
     if [ "$key" = "KEY_VOLUMEUP" ]; then
         ui_print " -> You selected: YES (Auto-Update Enabled)"
-        # Buat file penanda bahwa user setuju auto-update
+        # Create a marker file indicating the user agreed to auto-update
         touch "$MODPATH/auto_update"
         break
     elif [ "$key" = "KEY_VOLUMEDOWN" ]; then
@@ -104,7 +104,7 @@ if [ -d "/data/adb/modules/MagiskHidePropsConf" ]; then
     ui_print "! WARNING, MagiskHidePropsConf module may cause issues with PIF."
 fi
 
-# Preserve previous setting (Path sudah disesuaikan ke FixIntegrity)
+# Preserve previous setting (Path adjusted to FixIntegrity)
 if [ -f "/data/adb/modules/fixintegrity/pif.prop" ]; then
     ui_print "- Restoring previous pif.prop settings..."
     cp -af "/data/adb/modules/fixintegrity/pif.prop" "$MODPATH/pif.prop"
@@ -122,13 +122,13 @@ if [ -f "/data/adb/pif.prop" ]; then
     mv -f /data/adb/pif.prop /data/adb/pif.prop.old
 fi
 
-# Beri izin eksekusi pada semua skrip
+# Grant execution permissions to all scripts
 chmod +x "$MODPATH/autopif.sh"
 chmod +x "$MODPATH/autopif_ota.sh"
 chmod +x "$MODPATH/action.sh"
 chmod +x "$MODPATH/security_patch.sh"
 
-# Bersihkan cache GMS yang tersisa
+# Clean up remaining GMS cache
 for pkg in com.google.android.gms com.android.vending; do
     for dir in "/data/user_de/0/$pkg" "/data/data/$pkg"; do
         [ -d "$dir" ] || continue

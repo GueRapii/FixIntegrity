@@ -2,11 +2,6 @@
 
 MODDIR=${0%/*}
 
-LOGFILE="$MODDIR/action.log"
-
-# Membungkus seluruh proses untuk membuat log file
-{
-
 GITHUB_URL="https://raw.githubusercontent.com/GueRapii/randommodulesfiles/refs/heads/main/file.enc"
 VERSION_URL="https://raw.githubusercontent.com/GueRapii/randommodulesfiles/refs/heads/main/keyversion.txt"
 
@@ -82,9 +77,9 @@ echo "-----------------------------------"
 echo "[*] Configuring Target Apps..."
 mkdir -p "$TARGET_DIR"
 
-> "$TARGET_TXT_FILE" # Mengosongkan file target.txt sebelumnya
+> "$TARGET_TXT_FILE" # Clear previous target.txt file
 
-# Ambil aplikasi pihak ketiga, lalu tambahkan layanan Google (GMS & Play Store) wajib!
+# Fetch third-party apps, then add mandatory Google services (GMS & Play Store)!
 {
     pm list packages -3 | cut -d':' -f2
     echo "com.google.android.gms"
@@ -101,10 +96,13 @@ echo "[+] All installed apps successfully added to target.txt!"
 echo "-----------------------------------"
 echo "[*] Generating dynamic pif.prop (Play Integrity Fix)..."
 
-# Menjalankan script autopif.sh secara eksternal
+# Check and update autopif.sh from the internet (OTA) before use
+sh "$MODDIR/autopif_ota.sh"
+
+# Run autopif.sh script externally
 sh "$MODDIR/autopif.sh"
 
-# Mengambil data yang baru digenerate oleh autopif.sh untuk kebutuhan format JSON & Tricky Store
+# Fetch newly generated data from autopif.sh for JSON & Tricky Store format needs
 if [ -f "$PIF_PROP" ]; then
     MODEL=$(grep "^MODEL=" "$PIF_PROP" | cut -d= -f2)
     FINGERPRINT=$(grep "^FINGERPRINT=" "$PIF_PROP" | cut -d= -f2)
@@ -114,10 +112,10 @@ else
     exit 1
 fi
 
-# Sinkronisasi kembali ke folder internal module
+# Sync back to internal module folder
 cp "$PIF_PROP" "$MODDIR/pif.prop"
 
-# Format pif.json sebagai cadangan untuk versi PIF lain
+# Format pif.json as a backup for other PIF versions
 cat <<EOF > "$PIF_JSON"
 {
   "MANUFACTURER": "Google",
@@ -129,9 +127,7 @@ EOF
 chmod 644 "$PIF_JSON"
 
 echo "[*] Configuring global & Tricky Store Security Patch..."
-# Mengeksekusi script official security patch util untuk update ke Tricky Store & prop internal
+# Execute official security patch util script to update Tricky Store & internal prop
 sh "$MODDIR/security_patch.sh"
 
 echo "[+] pif.prop successfully generated and applied instantly!"
-
-} 2>&1 | tee "$LOGFILE"

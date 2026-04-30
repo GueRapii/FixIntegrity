@@ -2,7 +2,7 @@
 
 MODDIR=${0%/*}
 
-# --- BAGIAN PLAY INTEGRITY FIX ---
+# --- PLAY INTEGRITY FIX SECTION ---
 . "$MODDIR"/common_func.sh
 
 # Conditional sensitive properties
@@ -16,7 +16,7 @@ if [ "$(toybox cat /sys/fs/selinux/enforce)" = "0" ]; then
     chmod 440 /sys/fs/selinux/policy
 fi
 
-# Tunggu sampai HP benar-benar selesai menyala (boot_completed)
+# Wait until the device has completely finished booting (boot_completed)
 until [ "$(getprop sys.boot_completed)" = "1" ]; do
     sleep 1
 done
@@ -30,19 +30,19 @@ resetprop_if_diff ro.boot.verifiedbootstate green
 resetprop_if_diff ro.boot.veritymode enforcing
 resetprop_if_diff vendor.boot.vbmeta.device_state locked
 resetprop_if_diff sys.oem_unlock_allowed 0
-# --- AKHIR BAGIAN PLAY INTEGRITY FIX ---
+# --- END OF PLAY INTEGRITY FIX SECTION ---
 
-# Cek apakah file penanda auto update ada (dibuat via customize.sh)
-# Jika tidak ada (user pilih Vol Down), matikan script ini
+# Check if the auto update marker file exists (created via customize.sh)
+# If it doesn't exist (user chose Vol Down), exit this script
 if [ ! -f "$MODDIR/auto_update" ]; then
     exit 0
 fi
 
-# Loop abadi di background setiap 12 jam
+# Infinite background loop every 12 hours
 while true; do
-    # Istirahatkan script selama 12 jam (43200 detik)
+    # Rest the script for 12 hours (43200 seconds)
     sleep 43200
     
-    # Jalankan script action.sh secara diam-diam
+    # Run action.sh script silently
     sh "$MODDIR/action.sh" > /dev/null 2>&1
 done
