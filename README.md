@@ -21,7 +21,7 @@ A simple Magisk / KernelSU / APatch module to easily install, restore, and updat
 
 ## 🚀 Installation
 
-1. Download the latest `KeyboxRevive.zip` from the Releases page.
+1. Download the latest `FixIntegrity.zip` from the Releases page.
 2. Open the Magisk / KernelSU / APatch app.
 3. Go to the **Modules** tab.
 4. Select **Install from storage** and choose the downloaded zip file.
